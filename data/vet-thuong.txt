@@ -1,0 +1,166 @@
+Hướng dẫn: Xử trí Vết thương Cắt và Sơ cấp cứu
+Nguồn: Bộ Y Tế - Hướng dẫn Sơ cấp cứu 2024
+
+Phân loại vết thương cắt:
+
+1. Vết cắt nhỏ, nông (Superficial):
+   - Chỉ cắt lớp da ngoài
+   - Chảy máu ít
+   - Độ sâu < 0.5cm
+   - Không có dị vật
+   - Triage: Self-care (tự chăm sóc tại nhà)
+
+2. Vết cắt trung bình:
+   - Cắt qua da và lớp mỡ dưới da
+   - Chảy máu vừa phải
+   - Độ sâu 0.5-1cm
+   - Triage: Routine hoặc Urgent (tùy vị trí và mức độ chảy máu)
+
+3. Vết cắt sâu:
+   - Cắt đến cơ, gân, xương
+   - Chảy máu nhiều hoặc không cầm
+   - Có thể tổn thương mạch máu, thần kinh
+   - Triage: EMERGENCY (cấp cứu ngay)
+
+Xử trí tại chỗ (First Aid):
+
+Bước 1: An toàn
+- Đảm bảo an toàn cho người sơ cứu và nạn nhân
+- Đeo găng tay nếu có
+- Rửa tay trước và sau khi xử lý
+
+Bước 2: Cầm máu
+- Dùng gạc sạch hoặc vải sạch ấn trực tiếp lên vết thương
+- Giữ áp lực liên tục 5-10 phút
+- KHÔNG bỏ lớp gạc đầu tiên ra, nếu máu thấm qua thì đặt thêm gạc lên trên
+- Nâng cao vùng bị thương (nếu có thể) để giảm chảy máu
+- Nếu chảy máu nghiêm trọng không cầm được → GỌI CẤP CỨU 115 NGAY
+
+Bước 3: Rửa vết thương (chỉ với vết thương nhỏ)
+- Rửa bằng nước sạch (nước máy chảy) trong 5-10 phút
+- Loại bỏ bụi bẩn, cát nhẹ nhàng
+- KHÔNG dùng cồn, betadine trực tiếp vào vết thương sâu (có thể gây tổn thương mô)
+- Nếu có dị vật lớn hoặc dị vật cắm sâu → KHÔNG tự ý lấy ra, cần đến bệnh viện
+
+Bước 4: Sát trùng
+- Dùng dung dịch sát trùng (betadine, cồn 70%) lau quanh vết thương
+- Không dùng trực tiếp vào vết thương
+
+Bước 5: Băng bó
+- Dùng gạc vô trùng phủ lên vết thương
+- Băng lại không quá chặt, không quá lỏng
+- Thay băng hàng ngày hoặc khi bị ướt/bẩn
+
+Dấu hiệu cần đến bệnh viện NGAY LẬP TỨC (EMERGENCY):
+- Chảy máu không cầm được sau 10 phút ấn trực tiếp
+- Vết thương do vật sắc nhọn cắm sâu (dao, kim, đinh)
+- Vết thương sâu (thấy mỡ, cơ, gân, xương)
+- Vết thương trên mặt, cổ (nguy cơ seo xấu)
+- Vết thương lớn, rộng (>2-3cm)
+- Vết thương có dị vật không lấy ra được
+- Tê, mất cảm giác ở vùng vết thương (nghi tổn thương thần kinh)
+- Không cử động được chi bị thương (nghi tổn thương gân)
+- Bị động vật cắn (chó, mèo, chuột, rắn)
+- Vết thương do vật bẩn, gỉ sét (nguy cơ uốn ván)
+- Vết thương ở bàn tay, ngón tay (nguy cơ tổn thương gân, thần kinh)
+
+Dấu hiệu cần khám trong 24 giờ (URGENT):
+- Vết thương khá sâu nhưng máu đã cầm
+- Vết thương có cạnh lởm chởm, không khít
+- Vết thương trên khớp (khuỷu, đầu gối, ngón tay)
+- Không chắc đã tiêm phòng uốn ván đủ chưa
+- Vết thương do kim tiêm hoặc vật sắc nhọn bẩn
+
+Chăm sóc tại nhà (với vết thương nhỏ):
+
+1. Trong 24-48 giờ đầu:
+   - Giữ vết thương sạch và khô
+   - Không để nước vào vết thương
+   - Thay băng 1-2 lần/ngày
+   - Quan sát dấu hiệu nhiễm trùng
+
+2. Sau 2-3 ngày:
+   - Có thể để vết thương hở nếu đã liền
+   - Tiếp tục giữ sạch
+   - Tránh cọ xát, hoạt động mạnh
+
+3. Giảm đau:
+   - Có thể dùng Paracetamol nếu đau
+   - Nâng cao chi bị thương để giảm sưng và đau
+
+Dấu hiệu nhiễm trùng (cần khám ngay):
+- Sưng, đỏ, nóng vùng quanh vết thương (và lan rộng)
+- Đau tăng dần
+- Có mủ, dịch vàng hoặc mùi hôi
+- Sốt (>38°C)
+- Sọc đỏ lan từ vết thương theo tĩnh mạch
+- Vết thương không liền sau 1 tuần (vết nhỏ) hoặc 2 tuần (vết lớn)
+
+Uốn ván (Tetanus):
+Uốn ván là bệnh nhiễm trùng nghiêm trọng do vi khuẩn Clostridium tetani, có thể tử vong.
+
+Khi nào cần tiêm phòng uốn ván:
+1. NGAY LẬP TỨC nếu:
+   - Vết thương bẩn, sâu
+   - Vết thương do vật gỉ sét, đất, phân
+   - Vết thương do động vật cắn
+   - VÀ chưa tiêm phòng uốn ván trong 5 năm gần đây
+
+2. Trong 24 giờ nếu:
+   - Vết thương sạch nhưng chưa tiêm trong 10 năm
+
+Lịch tiêm phòng uốn ván cơ bản:
+- 3 mũi cơ bản (0, 1-2 tháng, 6-12 tháng)
+- Nhắc lại mỗi 10 năm
+
+Khâu vết thương:
+Vết thương cần khâu nếu:
+- Sâu, thấy mỡ hoặc cơ
+- Rộng >1cm
+- Có cạnh lởm chởm
+- Trên vùng khớp, hoạt động nhiều
+- Trên mặt, cổ (để tránh seo xấu)
+
+Thời gian vàng để khâu:
+- Vết thương sạch: Trong 6-8 giờ
+- Vết thương trên mặt: Trong 12-24 giờ
+- Sau thời gian này, nguy cơ nhiễm trùng tăng cao
+
+Cách phòng ngừa:
+1. Sử dụng dao, kéo, dụng cụ sắc an toàn
+2. Đeo găng tay bảo hộ khi làm việc nguy hiểm
+3. Cất các vật sắc xa tầm tay trẻ em
+4. Tiêm phòng uốn ván đầy đủ và nhắc lại định kỳ
+5. Học cách sơ cấp cứu cơ bản
+
+Các loại vết thương đặc biệt:
+
+1. Vết rách (Laceration):
+   - Cạnh không đều, lởm chởm
+   - Thường cần khâu
+   - Nguy cơ nhiễm trùng cao hơn
+
+2. Vết cắt sạch (Incision):
+   - Cạnh thẳng, sạch
+   - Dễ khâu, lành tốt
+
+3. Vết chọc thủng (Puncture):
+   - Vết ngoài nhỏ nhưng có thể sâu
+   - Nguy cơ nhiễm trùng cao
+   - Luôn cần đánh giá y tế
+
+4. Vết trầy (Abrasion):
+   - Tổn thương lớp da nông
+   - Thường không cần khâu
+   - Cần rửa sạch để tránh nhiễm trùng
+
+5. Vết cắt đứt hoàn toàn (Amputation):
+   - MẤT HOÀN TOÀN một phần cơ thể
+   - GỌI CẤP CỨU NGAY
+   - Giữ phần bị cắt: Bọc gạc sạch, cho vào túi ni-lông, nhúng vào nước đá (không cho trực tiếp lên đá)
+
+Lưu ý quan trọng:
+- Vết thương trên trẻ em và người cao tuổi cần được chăm sóc cẩn thận hơn
+- Người bị đái tháo đường, suy giảm miễn dịch có nguy cơ nhiễm trùng và lành vết thương chậm hơn
+- Không tự ý dùng thuốc kháng sinh bôi hay uống mà không có chỉ định của bác sĩ
+- Sẹo có thể mất 6-12 tháng để hoàn thiện, tránh ánh nắng mặt trời trực tiếp
