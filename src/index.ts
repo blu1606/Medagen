@@ -69,6 +69,17 @@ async function startServer() {
 
     // Error handler
     fastify.setErrorHandler((error, request, reply) => {
+      // Handle validation errors (Fastify schema validation)
+      if (error.validation) {
+        logger.warn({ validation: error.validation }, 'Validation error');
+        return reply.status(400).send({
+          error: 'Validation Error',
+          message: error.message,
+          details: error.validation
+        });
+      }
+
+      // Handle other errors
       logger.error(error, 'Unhandled error');
       
       reply.status(500).send({

@@ -70,26 +70,15 @@ export async function mapsRoutes(fastify: FastifyInstance) {
     }
   }, async (request: FastifyRequest<{ Querystring: { lat: number; lng: number; keyword?: string } }>, reply: FastifyReply) => {
     try {
+      // Fastify schema validation handles validation automatically
       const { lat, lng, keyword } = request.query;
 
-      const validationResult = locationSchema.safeParse({ lat, lng, keyword });
-      
-      if (!validationResult.success) {
-        return reply.status(400).send({
-          error: 'Invalid request',
-          details: validationResult.error.errors
-        });
-      }
-
       const location: Location = {
-        lat: validationResult.data.lat,
-        lng: validationResult.data.lng
+        lat,
+        lng
       };
 
-      const clinic = await mapsService.findNearestClinic(
-        location,
-        validationResult.data.keyword
-      );
+      const clinic = await mapsService.findNearestClinic(location, keyword);
 
       if (!clinic) {
         return reply.status(404).send({

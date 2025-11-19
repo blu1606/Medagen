@@ -52,18 +52,10 @@ export async function cvRoutes(fastify: FastifyInstance) {
         }
       }
     }
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { image_url: string } }>, reply: FastifyReply) => {
     try {
-      const validationResult = imageUrlSchema.safeParse(request.body);
-      
-      if (!validationResult.success) {
-        return reply.status(400).send({
-          error: 'Invalid request',
-          details: validationResult.error.errors
-        });
-      }
-
-      const result = await cvService.callDermCV(validationResult.data.image_url);
+      // Fastify schema validation handles validation automatically
+      const result = await cvService.callDermCV(request.body.image_url);
       return reply.status(200).send(result);
     } catch (error) {
       logger.error('Derm CV endpoint error:', error);
@@ -116,18 +108,9 @@ export async function cvRoutes(fastify: FastifyInstance) {
         }
       }
     }
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { image_url: string } }>, reply: FastifyReply) => {
     try {
-      const validationResult = imageUrlSchema.safeParse(request.body);
-      
-      if (!validationResult.success) {
-        return reply.status(400).send({
-          error: 'Invalid request',
-          details: validationResult.error.errors
-        });
-      }
-
-      const result = await cvService.callEyeCV(validationResult.data.image_url);
+      const result = await cvService.callEyeCV(request.body.image_url);
       return reply.status(200).send(result);
     } catch (error) {
       logger.error('Eye CV endpoint error:', error);
@@ -180,18 +163,9 @@ export async function cvRoutes(fastify: FastifyInstance) {
         }
       }
     }
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { image_url: string } }>, reply: FastifyReply) => {
     try {
-      const validationResult = imageUrlSchema.safeParse(request.body);
-      
-      if (!validationResult.success) {
-        return reply.status(400).send({
-          error: 'Invalid request',
-          details: validationResult.error.errors
-        });
-      }
-
-      const result = await cvService.callWoundCV(validationResult.data.image_url);
+      const result = await cvService.callWoundCV(request.body.image_url);
       return reply.status(200).send(result);
     } catch (error) {
       logger.error('Wound CV endpoint error:', error);

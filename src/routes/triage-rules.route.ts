@@ -78,16 +78,9 @@ export async function triageRulesRoutes(fastify: FastifyInstance) {
     }
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const validationResult = triageInputSchema.safeParse(request.body);
-      
-      if (!validationResult.success) {
-        return reply.status(400).send({
-          error: 'Invalid request',
-          details: validationResult.error.errors
-        });
-      }
-
-      const result = triageService.evaluateSymptoms(validationResult.data as TriageInput);
+      // Fastify schema validation will handle validation automatically
+      // If validation fails, Fastify will return 400 before reaching here
+      const result = triageService.evaluateSymptoms(request.body as TriageInput);
       return reply.status(200).send(result);
     } catch (error) {
       logger.error('Triage rules endpoint error:', error);

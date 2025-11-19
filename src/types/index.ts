@@ -71,10 +71,10 @@ export interface TriageInput {
 }
 
 export interface CVResult {
-  top_conditions: Array<{
-    name: string;
-    prob: number;
-  }>;
+  top_conditions: Array<{ name: string; prob: number }>;
+  status?: 'success' | 'out_of_domain' | 'error';
+  max_confidence?: number;
+  threshold?: number;
 }
 
 export interface GuidelineQuery {

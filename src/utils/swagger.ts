@@ -6,7 +6,7 @@ export const swaggerOptions: FastifySwaggerOptions = {
     openapi: '3.1.0',
     info: {
       title: 'MEDAGEN Backend API',
-      description: 'AI Triage Assistant API với ReAct Agent và Gemini 2.0 Flash',
+      description: 'AI Triage Assistant API với ReAct Agent và Gemini 2.5Flash',
       version: '2.0.0',
       contact: {
         name: 'MEDAGEN Team'
@@ -14,8 +14,8 @@ export const swaggerOptions: FastifySwaggerOptions = {
     },
     servers: [
       {
-        url: 'http://localhost:3000',
-        description: 'Development server'
+        url: 'http://localhost:7860',
+        description: 'Development server (Port 7860)'
       }
     ],
     tags: [
@@ -198,7 +198,7 @@ export const swaggerOptions: FastifySwaggerOptions = {
             llm: {
               type: 'string',
               description: 'Model LLM đang sử dụng',
-              example: 'gemini-2.0-flash-exp'
+              example: 'gemini-2.5-flash'
             },
             cv_services: {
               type: 'object',
@@ -252,9 +252,16 @@ export const swaggerUiOptions: FastifySwaggerUiOptions = {
     displayRequestDuration: true,
     persistAuthorization: true
   },
-  initOAuth: {},
-  theme: {
-    title: 'MEDAGEN API Documentation'
-  }
+  staticCSP: false, // Disable strict CSP to allow Swagger UI to fetch JSON
+  transformSpecification: (swaggerObject, request, reply) => {
+    // Ensure servers URL matches current request
+    if (swaggerObject.servers && swaggerObject.servers.length > 0) {
+      const protocol = request.headers['x-forwarded-proto'] || (request.protocol || 'http');
+      const host = request.headers.host || 'localhost:7860';
+      swaggerObject.servers[0].url = `${protocol}://${host}`;
+    }
+    return swaggerObject;
+  },
+  transformSpecificationClone: true
 };
 

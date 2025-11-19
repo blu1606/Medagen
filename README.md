@@ -1,10 +1,10 @@
 # MEDAGEN Backend
 
-Backend API cho hệ thống AI Triage Assistant, sử dụng LangChain ReAct Agent với Gemini 2.0 Flash.
+Backend API cho hệ thống AI Triage Assistant, sử dụng LangChain ReAct Agent với Gemini 2.5Flash.
 
 ## 🎯 Tính năng
 
-- ✅ ReAct Agent với Gemini 2.0 Flash
+- ✅ ReAct Agent với Gemini 2.5Flash
 - ✅ Computer Vision Tools (Dermatology, Eye, Wound)
 - ✅ Triage Rules Engine (deterministic safety rules)
 - ✅ RAG với Supabase Vector (Guideline-based recommendations)
@@ -16,7 +16,7 @@ Backend API cho hệ thống AI Triage Assistant, sử dụng LangChain ReAct Ag
 - **Runtime**: Node.js 18+
 - **Framework**: Fastify
 - **Agent**: LangChainJS
-- **LLM**: Gemini 2.0 Flash (Google AI Studio)
+- **LLM**: Gemini 2.5Flash (Google AI Studio)
 - **Embedding**: Gemini text-embedding-004
 - **Vector DB**: Supabase pgvector
 - **Database**: Supabase Postgres
@@ -99,7 +99,7 @@ Response:
 ```json
 {
   "status": "ok",
-  "llm": "gemini-2.0-flash-exp",
+  "llm": "gemini-2.5-flash",
   "cv_services": {
     "derm_cv": "unknown",
     "eye_cv": "unknown",

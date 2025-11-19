@@ -25,7 +25,7 @@ export async function triageRoutes(
 ) {
   fastify.post('/api/health-check', {
     schema: {
-      description: 'Endpoint chính để xử lý triage y tế. Sử dụng ReAct Agent với Gemini 2.0 Flash để phân tích triệu chứng và đưa ra khuyến nghị.',
+      description: 'Endpoint chính để xử lý triage y tế. Sử dụng ReAct Agent với Gemini 2.5Flash để phân tích triệu chứng và đưa ra khuyến nghị.',
       tags: ['triage'],
       body: {
         type: 'object',

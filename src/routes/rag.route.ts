@@ -66,21 +66,13 @@ export async function ragRoutes(
         }
       }
     }
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Body: { symptoms: string; suspected_conditions?: string[]; triage_level?: string } }>, reply: FastifyReply) => {
     try {
-      const validationResult = guidelineQuerySchema.safeParse(request.body);
-      
-      if (!validationResult.success) {
-        return reply.status(400).send({
-          error: 'Invalid request',
-          details: validationResult.error.errors
-        });
-      }
-
+      // Fastify schema validation handles validation automatically
       const query: GuidelineQuery = {
-        symptoms: validationResult.data.symptoms,
-        suspected_conditions: validationResult.data.suspected_conditions || [],
-        triage_level: validationResult.data.triage_level || ''
+        symptoms: request.body.symptoms,
+        suspected_conditions: request.body.suspected_conditions || [],
+        triage_level: request.body.triage_level || ''
       };
 
       const guidelines = await ragService.searchGuidelines(query);
