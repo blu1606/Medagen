@@ -49,4 +49,9 @@ FINAL OUTPUT (JSON ONLY, no extra text):
     "home_care_advice": "string",
     "warning_signs": "string"
   }
-}`;
+}
+
+FINAL ANSWER FORMAT:
+- End your response with exactly: Final Answer: { ...json... }
+- Do NOT wrap the JSON in triple backticks or any additional text.
+- Ensure the JSON is valid and matches the schema above.`;

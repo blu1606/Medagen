@@ -1,10 +1,11 @@
-import { BaseLLM } from '@langchain/core/language_models/llms';
+import { LLM } from '@langchain/core/language_models/llms';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 import type { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
+import type { LLMResult } from '@langchain/core/outputs';
 
-export class GeminiLLM extends BaseLLM {
+export class GeminiLLM extends LLM {
   private genAI: GoogleGenerativeAI;
   private modelName: string;
 
@@ -18,23 +19,34 @@ export class GeminiLLM extends BaseLLM {
     return 'gemini';
   }
 
-  async _call(
-    prompt: string,
+  async _generate(
+    prompts: string[],
     options?: this['ParsedCallOptions'],
     runManager?: CallbackManagerForLLMRun
-  ): Promise<string> {
+  ): Promise<LLMResult> {
     try {
       const model = this.genAI.getGenerativeModel({ model: this.modelName });
       
       logger.info(`Calling Gemini ${this.modelName}...`);
       
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
+      const generations = await Promise.all(
+        prompts.map(async (prompt) => {
+          const result = await model.generateContent(prompt);
+          const response = await result.response;
+          const text = response.text();
+          
+          return {
+            text,
+            generationInfo: {}
+          };
+        })
+      );
       
       logger.info('Gemini response received');
       
-      return text;
+      return {
+        generations: [generations]
+      };
     } catch (error) {
       logger.error('Error calling Gemini API:', error);
       throw new Error(`Gemini API error: ${error}`);

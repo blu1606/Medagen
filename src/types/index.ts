@@ -4,10 +4,22 @@ export interface Location {
 }
 
 export interface HealthCheckRequest {
-  text: string;
+  text?: string;
   image_url?: string;
   user_id: string;
+  session_id?: string; // For tracking conversation history
   location?: Location;
+}
+
+export interface ConversationMessage {
+  id: string;
+  session_id: string;
+  user_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  image_url?: string;
+  triage_result?: any;
+  created_at: string;
 }
 
 export type TriageLevel = "emergency" | "urgent" | "routine" | "self-care";

@@ -42,6 +42,10 @@ export const swaggerOptions: FastifySwaggerOptions = {
       {
         name: 'sessions',
         description: 'Session management endpoints'
+      },
+      {
+        name: 'conversations',
+        description: 'Conversation history endpoints'
       }
     ],
     components: {
