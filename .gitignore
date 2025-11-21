@@ -17,8 +17,5 @@ IMPLEMENTATION_SUMMARY.md
 BE_Document.md
 TEST_RESULTS.md
 
-# Migration
-migration.sql
-
 # Test
 test-endpoints.sh
