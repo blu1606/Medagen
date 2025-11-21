@@ -22,3 +22,6 @@ migration.sql
 
 # Test
 test-endpoints.sh
+
+# Data
+data/
