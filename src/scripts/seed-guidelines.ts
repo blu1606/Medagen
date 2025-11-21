@@ -1,196 +1,333 @@
-import { readdir, readFile } from 'fs/promises';
+import { readdir, readFile, stat } from 'fs/promises';
 import { join } from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
-import { SupabaseService } from '../services/supabase.service.js';
-import { RAGService } from '../services/rag.service.js';
-import { validateConfig } from '../utils/config.js';
+import { createClient } from '@supabase/supabase-js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { config, validateConfig } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-interface ParsedGuideline {
-  condition: string;
-  source: string;
-  content: string;
+// ===================== CONFIG =====================
+const SUPABASE_URL = config.supabase.url;
+const SUPABASE_SERVICE_KEY = config.supabase.serviceKey;
+const GEMINI_API_KEY = config.gemini.apiKey;
+
+const TABLE_NAME = 'medical_knowledge_chunks';
+const SPECIALTY_FOLDER = 'Da liễu'; // Can be changed: "Than-kinh", etc.
+const SPECIALTY_LABEL = slugToLabel(SPECIALTY_FOLDER);
+
+// ===================== INIT CLIENTS =====================
+const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+  auth: { persistSession: false },
+});
+
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+
+// ===================== HELPER FUNCTIONS =====================
+
+/**
+ * Convert slug to human-friendly label
+ */
+function slugToLabel(slug: string): string {
+  let label = slug.replace(/[-_]+/g, ' ');
+  label = label.replace(/\s+/g, ' ').trim();
+
+// Remove "CHƯƠNG {n}" prefix entirely
+label = label.replace(/^(CH(U|Ư)ƠNG)\s*\d+\s*[.:~-]?\s*/iu, '');
+
+  // Remove leading numeric / roman numeral prefixes (e.g., "1.", "(IV)", "2-")
+  label = label.replace(/^(?:\(?[0-9IVXLCDM]+\)?)(?:\s*[\.\-])?\s+/iu, '');
+
+  // Cleanup remaining punctuation/spacing
+  label = label.replace(/\s*:\s*/g, ': ');
+  label = label.replace(/\s*-\s*/g, ' - ');
+  label = label.replace(/\s+\./g, '. ');
+  label = label.replace(/,\s*/g, ', ');
+  label = label.replace(/\s{2,}/g, ' ').trim();
+
+  if (!label) {
+    label = slug.replace(/[-_]+/g, ' ').trim();
+  }
+
+  return label;
+  }
+
+/**
+ * Parse section filename to human-readable title.
+ * Supports formats like:
+ *   - "ĐẠI CƯƠNG.txt"
+ *   - "ĐẠI CƯƠNG_1.txt" (duplicate-safe suffix)
+ */
+function parseSectionFileName(filename: string): { title: string } | null {
+  if (!filename.endsWith('.txt')) return null;
+  const base = filename.replace(/\.txt$/i, '');
+  const withoutDuplicateSuffix = base.replace(/_(\d+)$/, '');
+  const title = withoutDuplicateSuffix.replace(/[_]+/g, ' ').trim();
+  if (!title) return null;
+  return { title };
 }
 
 /**
- * Parse a guideline text file to extract condition, source, and content
+ * Generate embedding using Gemini
  */
-function parseGuidelineFile(content: string, filename: string): ParsedGuideline | null {
-  const lines = content.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-  
-  if (lines.length < 2) {
-    logger.warn(`File ${filename} has insufficient content`);
-    return null;
+async function embed(text: string): Promise<number[]> {
+  const res = await embedModel.embedContent(text);
+  return res.embedding.values;
+      }
+
+/**
+ * Check if a directory entry is a directory
+ */
+async function isDirectory(path: string): Promise<boolean> {
+  try {
+    const stats = await stat(path);
+    return stats.isDirectory();
+  } catch {
+    return false;
   }
-
-  // Extract condition from first line: "Hướng dẫn: [Condition]"
-  let condition = '';
-  if (lines[0].startsWith('Hướng dẫn:')) {
-    condition = lines[0].replace('Hướng dẫn:', '').trim();
-  } else {
-    // Fallback: use filename without extension
-    condition = filename.replace('.txt', '').replace(/-/g, ' ');
-  }
-
-  // Extract source from second line: "Nguồn: [Source]"
-  let source = '';
-  if (lines[1].startsWith('Nguồn:')) {
-    source = lines[1].replace('Nguồn:', '').trim();
-  } else {
-    source = 'Unknown Source';
-  }
-
-  // Get content (skip first 2 lines)
-  const contentLines = lines.slice(2);
-  const fullContent = contentLines.join('\n').trim();
-
-  if (!condition || !fullContent) {
-    logger.warn(`File ${filename} missing condition or content`);
-    return null;
-  }
-
-  return {
-    condition,
-    source,
-    content: fullContent
-  };
 }
 
 /**
- * Chunk text into smaller pieces for vector embedding
- * Tries to keep sentences intact and maintain semantic meaning
+ * Get or create specialty record
  */
-function chunkText(text: string, maxChunkSize: number = 500): string[] {
-  const chunks: string[] = [];
-  
-  // Split by paragraphs first
-  const paragraphs = text.split(/\n\s*\n/).filter(p => p.trim().length > 0);
-  
-  let currentChunk = '';
-  
-  for (const paragraph of paragraphs) {
-    const paragraphTrimmed = paragraph.trim();
-    
-    // If paragraph is short, add to current chunk
-    if (currentChunk.length + paragraphTrimmed.length + 1 <= maxChunkSize) {
-      if (currentChunk) {
-        currentChunk += '\n\n' + paragraphTrimmed;
-      } else {
-        currentChunk = paragraphTrimmed;
-      }
-    } else {
-      // Save current chunk if it has content
-      if (currentChunk) {
-        chunks.push(currentChunk);
-      }
-      
-      // If paragraph itself is longer than maxChunkSize, split by sentences
-      if (paragraphTrimmed.length > maxChunkSize) {
-        const sentences = paragraphTrimmed.split(/([.!?]\s+)/);
-        let sentenceChunk = '';
-        
-        for (let i = 0; i < sentences.length; i += 2) {
-          const sentence = sentences[i] + (sentences[i + 1] || '');
-          
-          if (sentenceChunk.length + sentence.length <= maxChunkSize) {
-            sentenceChunk += sentence;
-          } else {
-            if (sentenceChunk) {
-              chunks.push(sentenceChunk);
-            }
-            sentenceChunk = sentence;
-          }
+async function getOrCreateSpecialty(name: string): Promise<string | null> {
+  // Try to find existing specialty
+  const { data: existing, error: fetchError } = await supabase
+    .from('specialties')
+    .select('id')
+    .eq('name', name)
+    .single();
+
+  if (existing) {
+    return existing.id;
+  }
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    logger.error({ error: fetchError }, `Error fetching specialty: ${name}`);
+    return null;
+  }
+
+  // Create new specialty
+  const { data: created, error: createError } = await supabase
+    .from('specialties')
+    .insert({ name })
+    .select('id')
+    .single();
+
+  if (createError) {
+    logger.error({ error: createError }, `Error creating specialty: ${name}`);
+    return null;
+  }
+
+  return created?.id || null;
+}
+
+/**
+ * Get or create disease record
+ */
+async function getOrCreateDisease(
+  name: string,
+  specialtyId: string
+): Promise<string | null> {
+  // Try to find existing disease
+  const { data: existing, error: fetchError } = await supabase
+    .from('diseases')
+    .select('id')
+    .eq('name', name)
+    .eq('specialty_id', specialtyId)
+    .single();
+
+  if (existing) {
+    return existing.id;
+  }
+
+  if (fetchError && fetchError.code !== 'PGRST116') {
+    logger.error({ error: fetchError }, `Error fetching disease: ${name}`);
+    return null;
+  }
+
+  // Create new disease
+  const { data: created, error: createError } = await supabase
+    .from('diseases')
+    .insert({ name, specialty_id: specialtyId })
+    .select('id')
+    .single();
+
+  if (createError) {
+    logger.error({ error: createError }, `Error creating disease: ${name}`);
+    return null;
+  }
+
+  return created?.id || null;
+}
+
+/**
+ * Get info domain ID by name
+ */
+async function getInfoDomainId(name: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('info_domains')
+    .select('id')
+    .eq('name', name)
+    .single();
+
+  if (error) {
+    // Try fuzzy match
+    const normalizedName = name.toLowerCase().trim();
+    const { data: allDomains } = await supabase
+      .from('info_domains')
+      .select('id, name');
+
+    if (allDomains) {
+      for (const domain of allDomains) {
+        if (domain.name.toLowerCase().includes(normalizedName) || 
+            normalizedName.includes(domain.name.toLowerCase())) {
+          return domain.id;
         }
-        
-        if (sentenceChunk) {
-          currentChunk = sentenceChunk;
-        } else {
-          currentChunk = paragraphTrimmed.substring(0, maxChunkSize);
-        }
-      } else {
-        currentChunk = paragraphTrimmed;
       }
     }
+    return null;
   }
-  
-  // Add last chunk
-  if (currentChunk) {
-    chunks.push(currentChunk);
-  }
-  
-  // Filter out very short chunks (less than 50 chars)
-  return chunks.filter(chunk => chunk.trim().length >= 50);
+
+  return data?.id || null;
 }
 
 async function seedGuidelines() {
   try {
-    logger.info('Starting guideline seeding from data folder...');
+    logger.info(`Starting medical knowledge seeding for ${SPECIALTY_LABEL}...`);
     
     validateConfig();
-    
-    const supabaseService = new SupabaseService();
-    const ragService = new RAGService(supabaseService);
-    
-    await ragService.initialize();
 
     // Get data folder path (relative to project root)
-    const dataFolder = join(__dirname, '../../data');
+    const dataRoot = join(__dirname, '../../data');
+    const specialtyRoot = join(dataRoot, SPECIALTY_FOLDER);
     
-    logger.info(`Reading files from: ${dataFolder}`);
+    logger.info(`Reading data from: ${specialtyRoot}`);
     
-    // Read all .txt files from data folder
-    const files = await readdir(dataFolder);
-    const txtFiles = files.filter(file => file.endsWith('.txt'));
-    
-    if (txtFiles.length === 0) {
-      logger.error('No .txt files found in data folder');
+    // Check if specialty folder exists
+    try {
+      await stat(specialtyRoot);
+    } catch {
+      logger.error(`Specialty folder not found: ${specialtyRoot}`);
       process.exit(1);
     }
-    
-    logger.info(`Found ${txtFiles.length} guideline file(s)`);
 
-    for (const filename of txtFiles) {
-      try {
-        logger.info(`\nProcessing file: ${filename}...`);
+    // Get or create specialty record
+    const specialtyId = await getOrCreateSpecialty(SPECIALTY_LABEL);
+    if (!specialtyId) {
+      logger.error('Failed to get or create specialty record');
+      process.exit(1);
+    }
+    logger.info(`Specialty ID: ${specialtyId}`);
+    
+    // Read chapter directories
+    const chapterEntries = await readdir(specialtyRoot);
+    let totalSeeded = 0;
+    let totalSkipped = 0;
+
+    for (const chapterSlug of chapterEntries) {
+      const chapterPath = join(specialtyRoot, chapterSlug);
+      
+      if (!(await isDirectory(chapterPath))) {
+        continue;
+      }
+
+      const chapterLabel = slugToLabel(chapterSlug);
+      logger.info(`\n📖 Processing chapter: ${chapterLabel}`);
+
+      // Read disease directories
+      const diseaseEntries = await readdir(chapterPath);
+
+      for (const diseaseSlug of diseaseEntries) {
+        const diseasePath = join(chapterPath, diseaseSlug);
         
-        const filePath = join(dataFolder, filename);
-        const fileContent = await readFile(filePath, 'utf-8');
-        
-        // Parse file to extract condition, source, and content
-        const parsed = parseGuidelineFile(fileContent, filename);
-        
-        if (!parsed) {
-          logger.warn(`Skipping ${filename} due to parsing error`);
+        if (!(await isDirectory(diseasePath))) {
           continue;
         }
         
-        logger.info(`  Condition: ${parsed.condition}`);
-        logger.info(`  Source: ${parsed.source}`);
+        const diseaseLabel = slugToLabel(diseaseSlug);
+        logger.info(`  🩺 Processing disease: ${diseaseLabel}`);
+
+        // Read section files
+        const sectionFiles = await readdir(diseasePath);
+
+        for (const filename of sectionFiles) {
+          // Skip non-txt files and _raw.txt
+          if (!filename.endsWith('.txt') || filename === '_raw.txt') {
+            continue;
+          }
+
+          const sectionInfo = parseSectionFileName(filename);
+          if (!sectionInfo) {
+            logger.warn(`    ⚠️  Skipping invalid filename: ${filename}`);
+            totalSkipped++;
+            continue;
+          }
+
+          const { title: sectionTitle } = sectionInfo;
+          const sectionPath = join(diseasePath, filename);
+          
+          try {
+            const content = await readFile(sectionPath, 'utf-8');
+            const contentTrimmed = content.trim();
+
+            if (!contentTrimmed) {
+              logger.warn(`    ⚠️  Skipping empty file: ${filename}`);
+              totalSkipped++;
+              continue;
+            }
+
+            const relativePath = sectionPath.replace(dataRoot + '/', '');
+
+            logger.info(`    📄 ${sectionTitle} (${contentTrimmed.length} chars)`);
         
-        // Chunk the content
-        const chunks = chunkText(parsed.content);
-        logger.info(`  Generated ${chunks.length} chunks`);
-        
-        // Add guideline to database
-        await ragService.addGuideline(
-          parsed.condition,
-          parsed.source,
-          chunks
-        );
-        
-        logger.info(`✅ Successfully seeded: ${parsed.condition}`);
+            // Get or create disease record
+            const diseaseId = await getOrCreateDisease(diseaseLabel, specialtyId);
+            
+            // Get info domain ID (match section title with info domain)
+            const infoDomainId = await getInfoDomainId(sectionTitle);
+            
+            // Generate embedding
+            const embedding = await embed(contentTrimmed);
+
+            // Insert into Supabase with both structured and legacy fields
+            const { error } = await supabase.from(TABLE_NAME).insert({
+              // Structured fields (new)
+              specialty_id: specialtyId,
+              disease_id: diseaseId,
+              info_domain_id: infoDomainId,
+              // Legacy fields (for backward compatibility)
+              specialty: SPECIALTY_LABEL,
+              chapter: chapterLabel,
+              disease: diseaseLabel,
+              section_title: sectionTitle,
+              content: contentTrimmed,
+              path: relativePath,
+              embedding,
+            });
+
+            if (error) {
+              logger.error({ error: error.message }, `    ❌ Error inserting: ${sectionTitle}`);
+              totalSkipped++;
+            } else {
+              totalSeeded++;
+            }
         
       } catch (error) {
-        logger.error({ error, filename }, `Error processing ${filename}`);
-        // Continue with next file
+            logger.error({ error }, `    ❌ Error processing file: ${filename}`);
+            totalSkipped++;
+          }
+        }
       }
     }
 
-    logger.info('\n✅ All guidelines seeded successfully');
+    logger.info(`\n✅ Seeding completed!`);
+    logger.info(`   📊 Total seeded: ${totalSeeded}`);
+    logger.info(`   ⚠️  Total skipped: ${totalSkipped}`);
     
   } catch (error) {
     if (error instanceof Error) {
