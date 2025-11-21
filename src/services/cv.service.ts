@@ -4,56 +4,96 @@ import { logger } from '../utils/logger.js';
 import type { CVResult } from '../types/index.js';
 
 export class CVService {
-  async callDermCV(imageUrl: string): Promise<CVResult> {
+  /**
+   * Parse markdown response from CV API to extract predictions
+   */
+  private parseMarkdownResponse(markdown: string): CVResult {
     try {
-      logger.info('Calling Dermatology CV model (DermNet API)...');
+      const lines = markdown.split('\n');
+      const top_conditions: Array<{ name: string; prob: number }> = [];
 
-      if (!config.cvModels.dermCV) {
-        logger.warn('Derm CV API URL not configured');
+      // Find "Top Predictions:" section
+      const predictionStartIndex = lines.findIndex(line => line.includes('**Top Predictions:**'));
+      
+      if (predictionStartIndex === -1) {
+        logger.warn('Could not find Top Predictions in response');
         return { top_conditions: [] };
       }
 
-      // 1. Download image từ URL (Supabase Storage, S3, ...)
-      const imgResponse = await axios.get(imageUrl, {
-        responseType: 'arraybuffer',
-        timeout: 15000,
-      });
+      // Parse predictions (format: **1.** Condition Name - **98.7%**)
+      for (let i = predictionStartIndex + 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line || !line.match(/^\*\*\d+\.\*\*/)) break;
 
-      const form = new FormData();
-      form.append('image', Buffer.from(imgResponse.data), 'image.jpg');
+        // Extract condition name and probability
+        // Format: **1.** Acne and Rosacea Photos - **98.7%**
+        const match = line.match(/\*\*\d+\.\*\*\s+(.+?)\s+-\s+\*\*(.+?)%\*\*/);
+        if (match) {
+          const name = match[1].trim();
+          const prob = parseFloat(match[2]) / 100; // Convert percentage to decimal
+          top_conditions.push({ name, prob });
+        }
+      }
 
-      // 2. Gửi file sang Python API /predict
+      logger.info(`Parsed ${top_conditions.length} predictions from CV response`);
+      return { top_conditions };
+    } catch (error) {
+      logger.error('Error parsing markdown response:', error);
+      return { top_conditions: [] };
+    }
+  }
+
+  /**
+   * Call the unified CV API endpoint
+   */
+  private async callCVAPI(imageUrl: string, modelType: 'dermnet' | 'teeth' | 'nail', topK: number = 3): Promise<CVResult> {
+    try {
+      if (!config.cvModels.endpoint) {
+        logger.warn('CV_ENDPOINT not configured');
+        return { top_conditions: [] };
+      }
+
+      const endpoint = `${config.cvModels.endpoint.replace(/\/$/, '')}/run/predict_image`;
+      
+      logger.info(`Calling CV API: ${endpoint} with model: ${modelType}`);
+
       const response = await axios.post(
-        `${config.cvModels.dermCV}/predict`,
-        form,
+        endpoint,
         {
-          headers: form.getHeaders(),
-          timeout: 20000,
+          data: [
+            { path: imageUrl },
+            modelType,
+            topK
+          ]
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 30000
         }
       );
 
-      const data = response.data;
+      logger.info('CV API response received');
 
-      // 3. Nếu success → map predictions → CVResult
-      if (data.status === 'success' && Array.isArray(data.predictions)) {
-        const top_conditions = data.predictions.map((p: any) => ({
-          name: p.class,
-          prob:
-            typeof p.confidence === 'number'
-              ? p.confidence
-              : (p.confidence_percent ?? 0) / 100,
-        }));
-
-        return { top_conditions };
+      // Parse response
+      if (response.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
+        const markdownResult = response.data.data[0];
+        return this.parseMarkdownResponse(markdownResult);
       }
 
-      // 4. Out-of-domain hoặc status khác → không trả condition nào
-      logger.warn(
-        `DermNet returned non-success status: ${data.status || 'unknown'}`
-      );
+      logger.warn('CV API returned unexpected response format');
       return { top_conditions: [] };
     } catch (error) {
-      logger.error('Derm CV API error:', error);
+      logger.error('CV API error:', error);
+      return { top_conditions: [] };
+    }
+  }
+
+  async callDermCV(imageUrl: string): Promise<CVResult> {
+    try {
+      logger.info('Calling Dermatology CV model...');
+      return await this.callCVAPI(imageUrl, 'dermnet', 3);
+    } catch (error) {
+      logger.error('Derm CV error:', error);
       return { top_conditions: [] };
     }
   }
@@ -61,22 +101,10 @@ export class CVService {
   async callEyeCV(imageUrl: string): Promise<CVResult> {
     try {
       logger.info('Calling Eye CV model...');
-      
-      if (!config.cvModels.eyeCV) {
-        logger.warn('Eye CV API URL not configured');
-        return { top_conditions: [] };
-      }
-
-      const response = await axios.post(
-        config.cvModels.eyeCV,
-        { image_url: imageUrl },
-        { timeout: 30000 }
-      );
-
-      logger.info('Eye CV response received');
-      return response.data;
+      // Eye conditions are also analyzed by dermnet model
+      return await this.callCVAPI(imageUrl, 'dermnet', 3);
     } catch (error) {
-      logger.error('Eye CV API error:', error);
+      logger.error('Eye CV error:', error);
       return { top_conditions: [] };
     }
   }
@@ -84,22 +112,10 @@ export class CVService {
   async callWoundCV(imageUrl: string): Promise<CVResult> {
     try {
       logger.info('Calling Wound CV model...');
-      
-      if (!config.cvModels.woundCV) {
-        logger.warn('Wound CV API URL not configured');
-        return { top_conditions: [] };
-      }
-
-      const response = await axios.post(
-        config.cvModels.woundCV,
-        { image_url: imageUrl },
-        { timeout: 30000 }
-      );
-
-      logger.info('Wound CV response received');
-      return response.data;
+      // Wound conditions are also analyzed by dermnet model
+      return await this.callCVAPI(imageUrl, 'dermnet', 3);
     } catch (error) {
-      logger.error('Wound CV API error:', error);
+      logger.error('Wound CV error:', error);
       return { top_conditions: [] };
     }
   }

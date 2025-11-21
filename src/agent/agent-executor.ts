@@ -1,21 +1,20 @@
-import { initializeAgentExecutorWithOptions } from 'langchain/agents';
 import { GeminiLLM } from './gemini-llm.js';
-import { SYSTEM_PROMPT } from './system-prompt.js';
-import { createAllTools } from '../mcp_tools/index.js';
 import { CVService } from '../services/cv.service.js';
 import { TriageRulesService } from '../services/triage-rules.service.js';
 import { RAGService } from '../services/rag.service.js';
+import { IntentClassifierService } from '../services/intent-classifier.service.js';
+import { KnowledgeBaseService } from '../services/knowledge-base.service.js';
 import { SupabaseService } from '../services/supabase.service.js';
-import { config } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 import type { TriageResult } from '../types/index.js';
 
 export class MedagenAgent {
-  private executor: any;
   private llm: GeminiLLM;
   private cvService: CVService;
   private triageService: TriageRulesService;
   private ragService: RAGService;
+  private knowledgeBase: KnowledgeBaseService;
+  private intentClassifier: IntentClassifierService;
   private initialized: boolean = false;
 
   constructor(supabaseService: SupabaseService) {
@@ -23,6 +22,8 @@ export class MedagenAgent {
     this.cvService = new CVService();
     this.triageService = new TriageRulesService();
     this.ragService = new RAGService(supabaseService);
+    this.knowledgeBase = new KnowledgeBaseService(supabaseService);
+    this.intentClassifier = new IntentClassifierService();
   }
 
   async initialize(): Promise<void> {
@@ -34,25 +35,10 @@ export class MedagenAgent {
       // Initialize RAG service
       await this.ragService.initialize();
 
-      // Create tools
-      const tools = createAllTools(
-        this.cvService,
-        this.triageService,
-        this.ragService
-      );
-
-      // Initialize agent executor
-      this.executor = await initializeAgentExecutorWithOptions(tools, this.llm, {
-        agentType: 'zero-shot-react-description',
-        verbose: config.agent.verbose,
-        maxIterations: config.agent.maxIterations,
-        returnIntermediateSteps: true
-      });
-
       this.initialized = true;
       logger.info('Medagen Agent initialized successfully');
     } catch (error) {
-      logger.error('Failed to initialize agent:', error);
+      logger.error(`Failed to initialize agent: ${error}`);
       throw error;
     }
   }
@@ -60,70 +46,471 @@ export class MedagenAgent {
   async processTriage(
     userText: string,
     imageUrl?: string,
-    userId?: string
+    _userId?: string,
+    conversationContext?: string
   ): Promise<TriageResult> {
     if (!this.initialized) {
       await this.initialize();
     }
 
     try {
-      logger.info('Starting triage process...');
+      logger.info('Starting query processing with intent classification...');
 
-      // Build context for agent
-      let context = `${SYSTEM_PROMPT}\n\nUser Input: ${userText}`;
-      
-      if (imageUrl) {
-        context += `\n\nUser has uploaded an image at URL: ${imageUrl}`;
-        context += '\nYou should analyze this image using the appropriate CV tool (derm_cv, eye_cv, or wound_cv) based on the symptoms described.';
+      // Step 1: Classify intent (AI-Agent.md approach)
+      const intent = this.intentClassifier.classifyIntent(userText, !!imageUrl);
+      logger.info(`Intent classified as: ${intent.type} (confidence: ${intent.confidence})`);
+
+      // Step 2: Handle out-of-scope queries
+      if (intent.type === 'out_of_scope') {
+        return this.handleOutOfScope(userText);
       }
 
-      // Run agent
-      const result = await this.executor.call({
-        input: context
-      });
+      // Step 3: Check if clarification is needed
+      if (intent.needsClarification && intent.suggestedQuestion) {
+        return this.handleNeedsClarification(userText, intent.suggestedQuestion);
+      }
 
-      logger.info('Agent processing complete');
-      logger.debug('Agent output:', result.output);
+      // Step 4: Route to appropriate workflow based on intent
+      switch (intent.type) {
+        case 'triage':
+          // Original triage workflow
+          if (imageUrl) {
+            return await this.processTriageWithImage(userText, imageUrl, conversationContext);
+          } else {
+            return await this.processTriageTextOnly(userText, conversationContext);
+          }
 
-      // Parse the agent's final output
-      const triageResult = this.parseAgentOutput(result.output);
+        case 'disease_info':
+          // Educational query about specific disease (AI-Agent.md Nhóm 1)
+          return await this.processDiseaseInfoQuery(userText, intent, conversationContext);
 
-      return triageResult;
+        case 'symptom_inquiry':
+        case 'general_health':
+          // General health inquiry - provide educational info + suggest triage if needed
+          return await this.processGeneralHealthQuery(userText, conversationContext);
+
+        default:
+          // Fallback to triage
+          if (imageUrl) {
+            return await this.processTriageWithImage(userText, imageUrl, conversationContext);
+          } else {
+            return await this.processTriageTextOnly(userText, conversationContext);
+          }
+      }
     } catch (error) {
-      logger.error('Error processing triage:', error);
+      logger.error(`Error processing query: ${error}`);
       
       // Return safe default
       return this.getSafeDefaultResponse(userText);
     }
   }
 
-  private parseAgentOutput(output: string): TriageResult {
+  /**
+   * Handle out-of-scope queries (AI-Agent.md Section 2)
+   */
+  private handleOutOfScope(userText: string): TriageResult {
+    return {
+      triage_level: 'routine',
+      symptom_summary: `Câu hỏi: "${userText}"`,
+      red_flags: [],
+      suspected_conditions: [],
+      cv_findings: {
+        model_used: 'none',
+        raw_output: {}
+      },
+      recommendation: {
+        action: 'Xin lỗi, câu hỏi này nằm ngoài phạm vi hỗ trợ của hệ thống. Chúng tôi chỉ cung cấp thông tin về các bệnh và triệu chứng dựa trên hướng dẫn của Bộ Y Tế.',
+        timeframe: 'Không áp dụng',
+        home_care_advice: 'Để biết thông tin về bảo hiểm y tế, chi phí, thủ tục hành chính, hoặc các phương pháp điều trị ngoài hướng dẫn BYT, vui lòng liên hệ trực tiếp với cơ sở y tế hoặc cơ quan chức năng.',
+        warning_signs: 'Hệ thống không hỗ trợ nội dung này'
+      }
+    };
+  }
+
+  /**
+   * Handle queries that need clarification (AI-Agent.md Section 5.1)
+   */
+  private handleNeedsClarification(userText: string, clarificationQuestion: string): TriageResult {
+    return {
+      triage_level: 'routine',
+      symptom_summary: `Câu hỏi chưa rõ: "${userText}"`,
+      red_flags: [],
+      suspected_conditions: [],
+      cv_findings: {
+        model_used: 'none',
+        raw_output: {}
+      },
+      recommendation: {
+        action: clarificationQuestion,
+        timeframe: 'Vui lòng cung cấp thêm thông tin',
+        home_care_advice: 'Để tôi có thể hỗ trợ tốt hơn, hãy cho tôi biết cụ thể hơn về triệu chứng hoặc bệnh bạn quan tâm.',
+        warning_signs: 'Nếu có triệu chứng nghiêm trọng, hãy đến cơ sở y tế ngay'
+      }
+    };
+  }
+
+  /**
+   * Process educational query about disease (AI-Agent.md Nhóm 1)
+   */
+  private async processDiseaseInfoQuery(
+    userText: string,
+    intent: any,
+    conversationContext?: string
+  ): Promise<TriageResult> {
     try {
-      // Try to extract JSON from output
-      const jsonMatch = output.match(/\{[\s\S]*\}/);
-      
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
+      logger.info('Processing disease info query...');
+
+      let guidelines: any[] = [];
+
+      // Step 1: Try structured knowledge base first (SQL filtering)
+      if (intent.entities.disease) {
+        logger.info(`Searching structured knowledge for disease: ${intent.entities.disease}`);
+        const disease = await this.knowledgeBase.findDisease(intent.entities.disease);
         
-        // Validate required fields
-        if (parsed.triage_level && parsed.symptom_summary && parsed.recommendation) {
-          return {
-            triage_level: parsed.triage_level,
-            symptom_summary: parsed.symptom_summary,
-            red_flags: parsed.red_flags || [],
-            suspected_conditions: parsed.suspected_conditions || [],
-            cv_findings: parsed.cv_findings || { model_used: 'none', raw_output: {} },
-            recommendation: parsed.recommendation
-          };
+        if (disease) {
+          logger.info(`Found disease: ${disease.name} (ID: ${disease.id})`);
+          
+          // Query with disease filter
+          const structuredResults = await this.knowledgeBase.queryStructuredKnowledge({
+            disease: disease.name,
+            infoDomain: intent.entities.info_domain,
+            query: userText
+          });
+
+          if (structuredResults.length > 0) {
+            guidelines = structuredResults;
+            logger.info(`Retrieved ${guidelines.length} structured knowledge chunks`);
+          }
         }
       }
 
-      logger.warn('Failed to parse agent output, using safe default');
-      throw new Error('Invalid agent output format');
+      // Step 2: Fallback to RAG if no structured results
+      if (guidelines.length === 0) {
+        logger.info('Using RAG fallback for semantic search...');
+        const guidelineQuery = {
+          symptoms: userText,
+          suspected_conditions: intent.entities.disease ? [intent.entities.disease] : [],
+          triage_level: 'routine'
+        };
+
+        guidelines = await this.ragService.searchGuidelines(guidelineQuery);
+        logger.info(`Retrieved ${guidelines.length} guideline snippets from RAG`);
+      }
+
+      // Use LLM to synthesize educational response
+      const prompt = `Bạn là trợ lý y tế giáo dục, dựa trên hướng dẫn của Bộ Y Tế.
+
+User hỏi: ${userText}
+
+${conversationContext ? `Context trước đó: ${conversationContext}` : ''}
+
+${intent.entities.disease ? `Bệnh được hỏi: ${intent.entities.disease}` : ''}
+${intent.entities.info_domain ? `Miền thông tin: ${intent.entities.info_domain}` : ''}
+
+Thông tin từ hướng dẫn BYT:
+${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
+
+QUAN TRỌNG:
+- Đây là câu hỏi giáo dục, KHÔNG PHẢI chẩn đoán cá nhân
+- Trả lời dựa trên hướng dẫn BYT
+- Giải thích rõ ràng, dễ hiểu
+- Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, không thay thế bác sĩ"
+- KHÔNG kê đơn, KHÔNG khuyến nghị liều thuốc cụ thể
+
+Tạo response JSON (ONLY JSON, no markdown):
+{
+  "triage_level": "routine",
+  "symptom_summary": "Tóm tắt câu hỏi của user",
+  "red_flags": [],
+  "suspected_conditions": [],
+  "cv_findings": {"model_used": "none", "raw_output": {}},
+  "recommendation": {
+    "action": "Giải thích thông tin về bệnh/triệu chứng dựa trên BYT guideline",
+    "timeframe": "Không áp dụng (vì đây là thông tin giáo dục)",
+    "home_care_advice": "Thông tin hữu ích từ guideline",
+    "warning_signs": "Luôn nhấn mạnh: Thông tin chỉ mang tính tham khảo. Nếu có triệu chứng, hãy đến bác sĩ để được khám và chẩn đoán chính xác."
+  }
+}`;
+
+      const generations = await this.llm._generate([prompt]);
+      const response = generations.generations[0][0].text;
+
+      const jsonMatch = response.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return parsed as TriageResult;
+      }
+
+      throw new Error('Failed to parse LLM response');
     } catch (error) {
-      logger.error('Error parsing agent output:', error);
+      logger.error(`Error processing disease info query: ${error}`);
+      return this.getSafeDefaultResponse(userText);
+    }
+  }
+
+  /**
+   * Process general health query
+   */
+  private async processGeneralHealthQuery(
+    userText: string,
+    conversationContext?: string
+  ): Promise<TriageResult> {
+    // Use RAG to find relevant information
+    const guidelineQuery = {
+      symptoms: userText,
+      suspected_conditions: [],
+      triage_level: 'routine'
+    };
+
+    const guidelines = await this.ragService.searchGuidelines(guidelineQuery);
+
+    const prompt = `Bạn là trợ lý y tế. User hỏi: ${userText}
+
+${conversationContext ? `Context: ${conversationContext}` : ''}
+
+Thông tin từ hướng dẫn:
+${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
+
+Trả lời một cách hữu ích, giáo dục, an toàn. Nhấn mạnh không thay thế bác sĩ.
+
+JSON response (ONLY JSON):
+{
+  "triage_level": "routine",
+  "symptom_summary": "Câu hỏi về sức khỏe tổng quát",
+  "red_flags": [],
+  "suspected_conditions": [],
+  "cv_findings": {"model_used": "none", "raw_output": {}},
+  "recommendation": {
+    "action": "Thông tin giáo dục phù hợp",
+    "timeframe": "Không áp dụng",
+    "home_care_advice": "Lời khuyên chung về sức khỏe",
+    "warning_signs": "Nếu có triệu chứng bất thường, hãy gặp bác sĩ"
+  }
+}`;
+
+    const generations = await this.llm._generate([prompt]);
+    const response = generations.generations[0][0].text;
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as TriageResult;
+    }
+
+    return this.getSafeDefaultResponse(userText);
+  }
+
+  /**
+   * Custom agent workflow when image is provided
+   * This ensures CV tools are actually called, not hallucinated by LLM
+   */
+  private async processTriageWithImage(
+    userText: string,
+    imageUrl: string,
+    conversationContext?: string
+  ): Promise<TriageResult> {
+    try {
+      logger.info('Processing triage with image using custom workflow...');
+
+      // Step 1: Call CV model directly based on user text
+      logger.info('Step 1: Analyzing image with CV model...');
+      const cvType = this.determineCVType(userText);
+      const cvResult = await this.callCVModel(imageUrl, cvType);
+      
+      logger.info(`CV analysis complete. Top condition: ${cvResult.top_conditions[0]?.name || 'none'}`);
+
+      // Step 2: Call triage rules with CV results
+      logger.info('Step 2: Applying triage rules...');
+      const triageInput = {
+        symptoms: {
+          main_complaint: userText || 'Triệu chứng dựa trên hình ảnh',
+          context: conversationContext
+        },
+        cv_results: {
+          model_used: cvType === 'derm' ? 'derm_cv' : cvType === 'eye' ? 'eye_cv' : 'wound_cv',
+          raw_output: {
+            top_predictions: cvResult.top_conditions.map(c => ({
+              condition: c.name,
+              probability: c.prob
+            }))
+          }
+        }
+      };
+
+      const triageResult = this.triageService.evaluateSymptoms(triageInput);
+      logger.info(`Triage level: ${triageResult.triage}`);
+
+      // Step 3: Get guidelines from RAG
+      logger.info('Step 3: Retrieving medical guidelines...');
+      const suspectedConditions = cvResult.top_conditions.slice(0, 2).map(c => c.name);
+      const guidelineInput = {
+        symptoms: userText,
+        suspected_conditions: suspectedConditions,
+        triage_level: triageResult.triage
+      };
+
+      const guidelines = await this.ragService.searchGuidelines(guidelineInput);
+      logger.info(`Retrieved ${guidelines.length} guideline snippets`);
+
+      // Step 4: Use LLM to synthesize final response
+      logger.info('Step 4: Synthesizing final response with LLM...');
+      const finalResult = await this.synthesizeFinalResponse(
+        userText,
+        cvResult,
+        triageResult,
+        guidelines,
+        conversationContext
+      );
+
+      return finalResult;
+    } catch (error) {
+      logger.error(`Error in custom agent workflow: ${error}`);
       throw error;
     }
+  }
+
+  /**
+   * Process text-only triage
+   */
+  private async processTriageTextOnly(
+    userText: string,
+    conversationContext?: string
+  ): Promise<TriageResult> {
+    try {
+      logger.info('Processing text-only triage...');
+
+      // Step 1: Apply triage rules
+      const triageInput = {
+        symptoms: {
+          main_complaint: userText,
+          context: conversationContext
+        }
+      };
+
+      const triageResult = this.triageService.evaluateSymptoms(triageInput);
+      
+      // Step 2: Get guidelines
+      const guidelineInput = {
+        symptoms: userText,
+        suspected_conditions: [],
+        triage_level: triageResult.triage
+      };
+
+      const guidelines = await this.ragService.searchGuidelines(guidelineInput);
+
+      // Step 3: Synthesize response
+      return await this.synthesizeFinalResponse(
+        userText,
+        { top_conditions: [] },
+        triageResult,
+        guidelines,
+        conversationContext
+      );
+    } catch (error) {
+      logger.error(`Error in text-only triage: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Determine which CV model to use based on user text
+   */
+  private determineCVType(userText: string): 'derm' | 'eye' | 'wound' {
+    const lowerText = userText.toLowerCase();
+    
+    // Check for eye-related keywords
+    if (lowerText.includes('mắt') || lowerText.includes('eye') || 
+        lowerText.includes('nhìn') || lowerText.includes('đỏ mắt')) {
+      return 'eye';
+    }
+    
+    // Check for wound-related keywords
+    if (lowerText.includes('vết thương') || lowerText.includes('wound') || 
+        lowerText.includes('bỏng') || lowerText.includes('burn') ||
+        lowerText.includes('chảy máu') || lowerText.includes('cắt')) {
+      return 'wound';
+    }
+    
+    // Default to dermatology
+    return 'derm';
+  }
+
+  /**
+   * Call appropriate CV model
+   */
+  private async callCVModel(imageUrl: string, type: 'derm' | 'eye' | 'wound') {
+    switch (type) {
+      case 'derm':
+        return await this.cvService.callDermCV(imageUrl);
+      case 'eye':
+        return await this.cvService.callEyeCV(imageUrl);
+      case 'wound':
+        return await this.cvService.callWoundCV(imageUrl);
+    }
+  }
+
+  /**
+   * Use LLM to synthesize final structured response
+   */
+  private async synthesizeFinalResponse(
+    userText: string,
+    cvResult: any,
+    triageResult: any,
+    guidelines: any[],
+    conversationContext?: string
+  ): Promise<TriageResult> {
+    const prompt = `Bạn là trợ lý y tế AI. Dựa trên thông tin sau, hãy tạo một phản hồi có cấu trúc:
+
+User input: ${userText}
+
+${conversationContext ? `Conversation context: ${conversationContext}` : ''}
+
+${cvResult.top_conditions.length > 0 ? `
+CV Analysis Results:
+${cvResult.top_conditions.map((c: any, i: number) => `${i + 1}. ${c.name}: ${(c.prob * 100).toFixed(1)}%`).join('\n')}
+` : ''}
+
+Triage Level: ${triageResult.triage}
+Red Flags: ${triageResult.red_flags?.join(', ') || 'Không có'}
+Reasoning: ${triageResult.reasoning}
+
+Medical Guidelines:
+${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
+
+Hãy tạo response JSON với format sau (ONLY JSON, no markdown):
+{
+  "triage_level": "${triageResult.triage}",
+  "symptom_summary": "Tóm tắt triệu chứng của người dùng bằng tiếng Việt",
+  "red_flags": ${JSON.stringify(triageResult.red_flags || [])},
+  "suspected_conditions": [
+    ${cvResult.top_conditions.length > 0 ? cvResult.top_conditions.slice(0, 3).map((c: any) => 
+      `{"name": "${c.name}", "source": "cv_model", "confidence": "${c.prob > 0.8 ? 'high' : c.prob > 0.5 ? 'medium' : 'low'}"}`
+    ).join(',\n    ') : ''}
+  ],
+  "cv_findings": {
+    "model_used": "${cvResult.top_conditions.length > 0 ? 'derm_cv' : 'none'}",
+    "raw_output": ${JSON.stringify(cvResult.top_conditions.length > 0 ? {
+      top_predictions: cvResult.top_conditions.map((c: any) => ({ condition: c.name, probability: c.prob }))
+    } : {})}
+  },
+  "recommendation": {
+    "action": "Hành động cụ thể người dùng nên làm tiếp theo",
+    "timeframe": "Khung thời gian",
+    "home_care_advice": "Lời khuyên chăm sóc tại nhà dựa trên guidelines",
+    "warning_signs": "Dấu hiệu cảnh báo cần đi khám ngay"
+  }
+}`;
+
+    const generations = await this.llm._generate([prompt]);
+    const response = generations.generations[0][0].text;
+
+    // Extract JSON from response
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      return parsed as TriageResult;
+    }
+
+    throw new Error('Failed to parse LLM response');
   }
 
   private getSafeDefaultResponse(userText: string): TriageResult {

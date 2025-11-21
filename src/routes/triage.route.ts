@@ -219,13 +219,13 @@ export async function triageRoutes(
       // Add user message to history
       await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
 
-      // Prepare input for agent with conversation context
-      const inputText = conversationContext 
-        ? `${conversationContext}\nUser: ${normalizedText || '[Hình ảnh được gửi]'}`
-        : normalizedText || '[Hình ảnh được gửi]';
-
-      // Process triage with agent
-      const triageResult = await agent.processTriage(inputText, normalizedImageUrl, user_id);
+      // Process triage with agent (pass conversation context separately)
+      const triageResult = await agent.processTriage(
+        normalizedText || 'Da tôi bị gì thế này', 
+        normalizedImageUrl, 
+        user_id,
+        conversationContext // Pass context separately for better agent handling
+      );
 
       // Add assistant response to conversation history
       try {
