@@ -41,31 +41,71 @@ Không đoán mò. Agent sẽ:
 * Đưa ra hướng dẫn dựa trên guideline.
 
 ---
+## KIẾN TRÚC CV 3 TẦNG (3-LAYER FILTER)
 
-## 🧠 LOGIC MỚI: QUY TRÌNH XỬ LÝ COMPUTER VISION (CV PIPELINE)
+Hệ thống sử dụng mô hình phễu lọc 3 bước để đảm bảo tính chính xác và tối ưu hóa tài nguyên xử lý.
 
-Đây là phần cập nhật quan trọng. Thay vì gọi thẳng model bệnh, hệ thống sẽ đi qua lớp **"Router & Localization"**.
+---
 
-### Quy trình 3 bước cho hình ảnh (The 3-Step CV Flow):
+### TỔNG QUAN CÁC TẦNG
 
-**Bước 1: Body Part & Domain Classification (Router)**
-* **Input:** Hình ảnh gốc.
-* **Nhiệm vụ:** Agent gọi một Vision Model tổng quát (hoặc model phân loại nhẹ) để trả lời: "Đây là bộ phận nào?"
-* **Output:**
-    * `Body Part`: Mặt, Tay, Chân, Mắt, Toàn thân...
-    * `Domain Hint`: Da liễu (Derm), Nhãn khoa (Ophthalmology), Chấn thương (Trauma), Xương khớp (Ortho - nếu là X-quang)...
+#### 🔹 Tầng 1: ĐỊNH VỊ (Body Region)
+Đây là tầng sơ loại để xác định vị trí giải phẫu trên cơ thể.
+* **Input:** Ảnh gốc (Raw Image).
+* **Nhiệm vụ:** Phân loại vùng cơ thể (Body Part Detection).
+* **Output:** Label vùng (Ví dụ: `Thorax`, `Face`, `Abdomen`, `Bone structure`...).
 
-**Bước 2: Tool Selection (Điều hướng)**
-* Dựa vào output Bước 1, Agent chọn tool chuyên sâu tương ứng:
-    * Nếu là `Mắt` → Gọi `tool_eye_cv`.
-    * Nếu là `Da` (bất kể vùng nào) → Gọi `tool_derm_cv`.
-    * Nếu là `Vết thương hở/Chảy máu` → Gọi `tool_wound_cv`.
-    * Nếu là `Xương khớp/X-quang` → Gọi `tool_ortho_cv` (nếu có) hoặc từ chối nếu chưa hỗ trợ.
+#### 🔹 Tầng 2: ĐIỀU HƯỚNG (Specialty Router)
+Tầng trung gian quyết định chuyên khoa nào sẽ chịu trách nhiệm xử lý.
+* **Input:** Label Vị trí (từ Tầng 1) + **Triệu chứng lâm sàng (Text)** từ người dùng.
+* **Nhiệm vụ:** Mapping sang chuyên khoa y tế để chọn model đích.
+* **Output:** ID Chuyên khoa (Ví dụ: `Oncology`, `Dermatology`, `Orthopedics`...).
 
-**Bước 3: Disease/Condition Inference (Model chuyên sâu)**
-* **Input:** Hình ảnh (đã crop hoặc focus nếu cần).
-* **Nhiệm vụ:** Model chuyên sâu chạy để tìm bệnh lý cụ thể.
-* **Output:** Danh sách bệnh + Độ tin cậy (Probability).
+#### 🔹 Tầng 3: CHẨN ĐOÁN (Specific Pathology)
+Tầng phân tích chuyên sâu sử dụng các model State-of-the-art cho từng loại bệnh.
+* **Input:** Vùng quan tâm (ROI) đã được crop hoặc focus.
+* **Nhiệm vụ:** Xác định tên bệnh lý cụ thể và mức độ nghiêm trọng.
+* **Output:** Tên bệnh + Confidence Score + Grade/Stage (Cấp độ).
+
+---
+
+### VÍ DỤ THỰC TẾ (USE CASES)
+
+#### 📌 Ví dụ 1: Chẩn đoán Phổi (Case Nặng)
+> **Luồng đi:** Phổi $\rightarrow$ Ung bướu $\rightarrow$ K Phổi Giai đoạn cuối
+
+* **Tầng 1 (Region):**
+    * **Input:** Ảnh X-quang hoặc CT scan lồng ngực.
+    * **Output:** `Thorax / Lung` (Lồng ngực/Phổi).
+
+* **Tầng 2 (Specialty):**
+    * **Context:** Region là `Lung` + Text user cung cấp: *"Ho ra máu, sụt cân nhanh trong 1 tháng"*.
+    * **Logic:** Triệu chứng cảnh báo đỏ (Red flags) $\rightarrow$ Ưu tiên **Ung bướu** hơn là Hô hấp thông thường.
+    * **Output:** `Oncology` (Ung bướu).
+
+* **Tầng 3 (Pathology):**
+    * **Model Selection:** Gọi model `Onco_Lung_CT_Net` (Chuyên phát hiện khối u).
+    * **Action:** Quét khối u, đo kích thước và độ xâm lấn.
+    * **Output:** **Malignant Tumor (Khối u ác tính)** - Suggestive of Stage IV.
+
+---
+
+#### 📌 Ví dụ 2: Chẩn đoán Mặt (Case Phổ thông)
+> **Luồng đi:** Mặt $\rightarrow$ Da liễu $\rightarrow$ Mụn trứng cá
+
+* **Tầng 1 (Region):**
+    * **Input:** Ảnh chụp selfie cận cảnh khuôn mặt bằng điện thoại.
+    * **Output:** `Face` (Mặt).
+
+* **Tầng 2 (Specialty):**
+    * **Context:** Region là `Face` + Text user cung cấp: *"Nổi nốt đỏ, sờ thấy đau nhẹ"*.
+    * **Logic:** Các triệu chứng và hình ảnh khớp với bệnh lý bề mặt da.
+    * **Output:** `Dermatology` (Da liễu).
+
+* **Tầng 3 (Pathology):**
+    * **Model Selection:** Gọi model `Derm_Acne_Classifier` (Chuyên phân loại mụn).
+    * **Action:** Phân tích tổn thương da (lesion analysis).
+    * **Output:** **Acne Vulgaris (Mụn trứng cá)** - Grade: Moderate (Mức độ trung bình).
 
 ---
 
