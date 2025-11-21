@@ -36,6 +36,8 @@ export const config = {
   },
   
   cvModels: {
+    endpoint: process.env.CV_ENDPOINT || '',
+    // Legacy support
     dermCV: process.env.DERM_CV_API_URL || '',
     eyeCV: process.env.EYE_CV_API_URL || '',
     woundCV: process.env.WOUND_CV_API_URL || ''
