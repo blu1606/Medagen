@@ -170,8 +170,15 @@ Tạo response JSON (ONLY JSON, no markdown):
 
       const jsonMatch = response.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return parsed as TriageResult;
+        const parsed = JSON.parse(jsonMatch[0]) as TriageResult;
+        
+        // Log final response
+        logger.info('='.repeat(80));
+        logger.info('[AGENT] FINAL RESPONSE (Disease Info Query):');
+        logger.info(JSON.stringify(parsed, null, 2));
+        logger.info('='.repeat(80));
+        
+        return parsed;
       }
 
       throw new Error('Failed to parse LLM response');
@@ -410,8 +417,15 @@ Hãy tạo response JSON với format sau (ONLY JSON, no markdown):
     // Extract JSON from response
     const jsonMatch = response.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      return parsed as TriageResult;
+      const parsed = JSON.parse(jsonMatch[0]) as TriageResult;
+      
+      // Log final response
+      logger.info('='.repeat(80));
+      logger.info('[AGENT] FINAL RESPONSE:');
+      logger.info(JSON.stringify(parsed, null, 2));
+      logger.info('='.repeat(80));
+      
+      return parsed;
     }
 
     throw new Error('Failed to parse LLM response');

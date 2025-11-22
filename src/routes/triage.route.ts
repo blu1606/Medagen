@@ -279,6 +279,10 @@ export async function triageRoutes(
       };
 
       logger.info(`Triage completed: ${triageResult.triage_level}, session: ${activeSessionId}`);
+      logger.info('='.repeat(80));
+      logger.info('[API] FINAL RESPONSE TO CLIENT:');
+      logger.info(JSON.stringify(response, null, 2));
+      logger.info('='.repeat(80));
 
       return reply.status(200).send(response);
     } catch (error) {
