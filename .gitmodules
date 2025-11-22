@@ -1,3 +1,6 @@
 [submodule "frontend"]
 	path = frontend
 	url = https://github.com/blu1606/Medagen_FE
+[submodule "AI-CV-Model"]
+	path = AI-CV-Model
+	url = https://github.com/thuongnvv/devfest2025-AI
