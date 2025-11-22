@@ -53,6 +53,7 @@ export interface TriageResult {
   suspected_conditions: SuspectedCondition[];
   cv_findings: CVFindings;
   recommendation: Recommendation;
+  message?: string; // Markdown response from LLM (natural language, not constrained by JSON structure)
 }
 
 export interface NearestClinic {

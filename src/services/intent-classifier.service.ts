@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger.js';
 
-export type IntentType = 'triage' | 'disease_info' | 'symptom_inquiry' | 'general_health' | 'out_of_scope';
+export type IntentType = 'triage' | 'disease_info' | 'symptom_inquiry' | 'general_health' | 'out_of_scope' | 'casual_greeting';
 
 export interface Intent {
   type: IntentType;
@@ -43,6 +43,12 @@ export class IntentClassifierService {
     'thuốc nam', 'đông y', 'thảo dược', 'bài thuốc'
   ];
 
+  private readonly CASUAL_GREETING_KEYWORDS = [
+    'xin chào', 'chào', 'hi', 'hello', 'cảm ơn', 'thanks', 'thank you',
+    'tạm biệt', 'bye', 'goodbye', 'ok', 'okay', 'được rồi', 'hiểu rồi',
+    'vâng', 'dạ', 'ừ', 'ừm', 'uhm', 'à', 'ah'
+  ];
+
   /**
    * Classify user intent based on query text
    */
@@ -51,7 +57,17 @@ export class IntentClassifierService {
     
     logger.info(`Classifying intent for query: "${query.substring(0, 50)}..."`);
 
-    // Check for out of scope first
+    // Check for casual greeting first (highest priority for lightweight processing)
+    if (this.isCasualGreeting(lowerQuery)) {
+      return {
+        type: 'casual_greeting',
+        confidence: 0.95,
+        entities: {},
+        needsClarification: false
+      };
+    }
+
+    // Check for out of scope
     if (this.isOutOfScope(lowerQuery)) {
       return {
         type: 'out_of_scope',
@@ -129,6 +145,17 @@ export class IntentClassifierService {
 
   private isOutOfScope(query: string): boolean {
     return this.OUT_OF_SCOPE_KEYWORDS.some(keyword => query.includes(keyword));
+  }
+
+  private isCasualGreeting(query: string): boolean {
+    // Check if query is very short (likely greeting) or contains greeting keywords
+    const trimmedQuery = query.trim();
+    if (trimmedQuery.length <= 15) {
+      // Very short queries are likely greetings
+      return this.CASUAL_GREETING_KEYWORDS.some(keyword => trimmedQuery.includes(keyword)) ||
+             /^(hi|hello|chào|xin chào|cảm ơn|thanks|ok|okay|vâng|dạ|ừ|bye)$/i.test(trimmedQuery);
+    }
+    return this.CASUAL_GREETING_KEYWORDS.some(keyword => query.includes(keyword));
   }
 
   private calculateKeywordScore(query: string, keywords: string[]): number {

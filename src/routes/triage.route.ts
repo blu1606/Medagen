@@ -233,8 +233,8 @@ export async function triageRoutes(
 
       // Add assistant response to conversation history
       try {
-        // Chỉ lấy recommendation.action, loại bỏ thông tin không cần thiết
-        const assistantMessage = triageResult.recommendation.action;
+        // Use markdown message if available, otherwise fallback to recommendation.action
+        const assistantMessage = (triageResult as any).message || triageResult.recommendation.action;
         await conversationService.addAssistantMessage(
           activeSessionId,
           user_id,

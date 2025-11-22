@@ -4,8 +4,9 @@ import { TriageRulesService } from '../services/triage-rules.service.js';
 import { RAGService } from '../services/rag.service.js';
 import { KnowledgeBaseService } from '../services/knowledge-base.service.js';
 import { SupabaseService } from '../services/supabase.service.js';
+import { IntentClassifierService, type Intent } from '../services/intent-classifier.service.js';
 import { logger } from '../utils/logger.js';
-import type { TriageResult } from '../types/index.js';
+import type { TriageResult, TriageLevel, ConditionSource, ConditionConfidence } from '../types/index.js';
 
 export class MedagenAgent {
   private llm: GeminiLLM;
@@ -13,6 +14,7 @@ export class MedagenAgent {
   private triageService: TriageRulesService;
   private ragService: RAGService;
   private knowledgeBase: KnowledgeBaseService;
+  private intentClassifier: IntentClassifierService;
   private initialized: boolean = false;
 
   constructor(supabaseService: SupabaseService) {
@@ -21,6 +23,7 @@ export class MedagenAgent {
     this.triageService = new TriageRulesService();
     this.ragService = new RAGService(supabaseService);
     this.knowledgeBase = new KnowledgeBaseService(supabaseService);
+    this.intentClassifier = new IntentClassifierService();
   }
 
   async initialize(): Promise<void> {
@@ -55,17 +58,37 @@ export class MedagenAgent {
       logger.info(`User text: "${userText}"`);
       logger.info(`Has image: ${!!imageUrl}`);
 
-      // Agent tự quyết định workflow dựa trên input
-      // - Có image: luôn gọi CV + RAG + Triage Rules
-      // - Không có image: Phân tích user text để quyết định gọi tools nào
-      
-      if (imageUrl) {
-        // Có hình ảnh: luôn xử lý như triage với CV
-        return await this.processTriageWithImage(userText, imageUrl, conversationContext);
-      } else {
-        // Không có hình ảnh: Agent tự quyết định dựa trên user text
-        // Sử dụng LLM để phân tích và quyết định workflow
-        return await this.processTriageTextOnly(userText, conversationContext);
+      // Step 1: Classify intent FIRST (routing decision)
+      const intent = this.intentClassifier.classifyIntent(userText, !!imageUrl);
+      logger.info(`[ROUTING] Intent classified: ${intent.type} (confidence: ${intent.confidence})`);
+
+      // Step 2: Route based on intent
+      switch (intent.type) {
+        case 'casual_greeting':
+          logger.info('[ROUTING] → Lightweight: Casual greeting');
+          return await this.handleCasualConversation(userText, conversationContext);
+
+        case 'out_of_scope':
+          logger.info('[ROUTING] → Lightweight: Out of scope');
+          return await this.handleOutOfScope(userText, intent);
+
+        case 'disease_info':
+          logger.info('[ROUTING] → Medium: Disease info (RAG only)');
+          return await this.processDiseaseInfoQuery(userText, conversationContext);
+
+        case 'triage':
+          if (imageUrl) {
+            logger.info('[ROUTING] → Full: Triage with image (CV + Triage + RAG)');
+            return await this.processTriageWithImage(userText, imageUrl, conversationContext);
+          } else {
+            logger.info('[ROUTING] → Full: Triage text-only (Triage + RAG)');
+            return await this.processTriageTextOnly(userText, conversationContext);
+          }
+
+        default:
+          // Fallback: if unclear, use lightweight response
+          logger.info('[ROUTING] → Lightweight: Default fallback');
+          return await this.handleCasualConversation(userText, conversationContext);
       }
     } catch (error) {
       logger.error({ error }, 'Error processing query');
@@ -133,39 +156,66 @@ export class MedagenAgent {
       
       logger.info(`[AGENT] Total guidelines collected: ${guidelines.length}`);
 
+      // Format guidelines for better readability
+      const formattedGuidelines = guidelines.map((g, i) => {
+        const content = typeof g === 'string' ? g : (g.content || g.snippet || JSON.stringify(g));
+        return `\n--- Guideline ${i + 1} ---\n${content}`;
+      }).join('\n\n');
+
       // Use LLM to synthesize educational response
-      const prompt = `Bạn là trợ lý y tế giáo dục của Việt Nam, dựa trên hướng dẫn của Bộ Y Tế.
+      const prompt = `Bạn là trợ lý y tế giáo dục của Việt Nam, dựa trên hướng dẫn của Bộ Y Tế. Hãy tạo một phản hồi TỰ NHIÊN, DỄ HIỂU bằng markdown HOÀN TOÀN BẰNG TIẾNG VIỆT.
 
 Câu hỏi của người dùng: ${userText}
 
 ${conversationContext ? `Ngữ cảnh cuộc trò chuyện trước: ${conversationContext}` : ''}
 
-Thông tin từ hướng dẫn Bộ Y Tế:
-${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
+═══════════════════════════════════════════════════════════════════════════════
+HƯỚNG DẪN Y TẾ TỪ BỘ Y TẾ (BẮT BUỘC PHẢI SỬ DỤNG):
+═══════════════════════════════════════════════════════════════════════════════
+${formattedGuidelines}
+═══════════════════════════════════════════════════════════════════════════════
 
-YÊU CẦU BẮT BUỘC:
+⚠️ QUAN TRỌNG: BẮT BUỘC sử dụng thông tin từ "Hướng dẫn y tế từ Bộ Y Tế" ở trên:
+- PHẢI dựa trên thông tin CỤ THỂ từ guidelines để giải thích, biện luận về bệnh/triệu chứng
+- KHÔNG được tự ý tạo thông tin ngoài guidelines được cung cấp
+- Có thể giải thích nguyên tắc điều trị từ guidelines (KHÔNG kê đơn cụ thể, không khuyến nghị liều thuốc)
+- Nếu guidelines đề cập thuốc cụ thể, có thể giải thích: "Có thể sử dụng các thuốc như... (theo chỉ định của bác sĩ)"
+- Nếu guidelines đề cập phương pháp, có thể giải thích phương pháp đó một cách tự nhiên
+
+YÊU CẦU VỀ PHONG CÁCH VIẾT:
 1. VIẾT HOÀN TOÀN BẰNG TIẾNG VIỆT - không được dùng tiếng Anh trong response
-2. KHÔNG được tự thêm câu mở đầu kiểu "Based on...", "I've assessed..." hoặc "This is..."
-3. Đây là câu hỏi giáo dục, KHÔNG PHẢI chẩn đoán cá nhân
-4. Trả lời dựa trên hướng dẫn BYT, giải thích rõ ràng và dễ hiểu
-5. Field "action" phải viết trực tiếp nội dung giải thích, không có câu meta
-6. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, không thay thế bác sĩ"
-7. KHÔNG kê đơn, KHÔNG khuyến nghị liều thuốc cụ thể
+2. Viết TỰ NHIÊN, DỄ HIỂU như đang trò chuyện với người dùng
+3. CÓ THỂ biện luận, so sánh, giải thích "tại sao", "như thế nào" một cách tự do
+4. Sử dụng markdown để format (tiêu đề, danh sách, nhấn mạnh) cho dễ đọc
+5. PHẢI sử dụng thông tin từ "Hướng dẫn y tế từ Bộ Y Tế" ở trên - KHÔNG được tự ý tạo thông tin
+6. KHÔNG được tự thêm câu mở đầu kiểu "Based on...", "I've assessed..." hoặc "This is..."
+7. Đây là câu hỏi giáo dục, KHÔNG PHẢI chẩn đoán cá nhân
+8. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, không thay thế bác sĩ"
+9. KHÔNG kê đơn, KHÔNG khuyến nghị liều thuốc cụ thể
 
-Tạo response JSON (CHỈ JSON thuần, không có markdown):
-{
-  "triage_level": "routine",
-  "symptom_summary": "Tóm tắt câu hỏi của người dùng bằng tiếng Việt (VD: 'Hỏi về bệnh trứng cá và cách điều trị')",
-  "red_flags": [],
-  "suspected_conditions": [],
-  "cv_findings": {"model_used": "none", "raw_output": {}},
-  "recommendation": {
-    "action": "Viết trực tiếp nội dung giải thích về bệnh/triệu chứng dựa trên hướng dẫn BYT (VD: 'Bệnh trứng cá là tình trạng viêm da mãn tính...')",
-    "timeframe": "Không áp dụng (đây là thông tin giáo dục, không phải trường hợp cụ thể)",
-    "home_care_advice": "Thông tin hữu ích từ guideline về phòng ngừa và chăm sóc",
-    "warning_signs": "Nhắc nhở: Thông tin chỉ mang tính tham khảo giáo dục. Nếu bạn đang có triệu chứng, hãy đến gặp bác sĩ để được khám và chẩn đoán chính xác."
-  }
-}`;
+Hãy tạo một phản hồi markdown TỰ NHIÊN, có thể bao gồm:
+- Giải thích về bệnh/triệu chứng dựa trên guidelines (định nghĩa, nguyên nhân, triệu chứng)
+- Giải thích nguyên tắc điều trị từ guidelines (KHÔNG kê đơn cụ thể)
+- Hướng dẫn về phòng ngừa và chăm sóc dựa trên guidelines
+- So sánh với các bệnh tương tự nếu có
+- Disclaimer về tính tham khảo
+
+Ví dụ format markdown (KHÔNG bắt buộc phải theo đúng format này, chỉ là gợi ý):
+## 📚 Về bệnh [tên bệnh]
+
+[Giải thích định nghĩa, nguyên nhân, triệu chứng dựa trên guidelines]
+
+## 💊 Nguyên tắc điều trị
+
+[Giải thích nguyên tắc điều trị từ guidelines, KHÔNG kê đơn cụ thể]
+
+## 💡 Hướng dẫn phòng ngừa và chăm sóc
+
+[Thông tin CỤ THỂ từ guidelines về phòng ngừa và chăm sóc]
+
+---
+
+**Lưu ý quan trọng:** Thông tin này chỉ mang tính tham khảo giáo dục, không thay thế bác sĩ. Nếu bạn đang có triệu chứng, hãy đến gặp bác sĩ để được khám và chẩn đoán chính xác.`;
 
       // Log prompt and input data before sending to LLM
       logger.info('='.repeat(80));
@@ -187,20 +237,47 @@ Tạo response JSON (CHỈ JSON thuần, không có markdown):
       const generations = await this.llm._generate([prompt]);
       const response = generations.generations[0][0].text;
 
-      const jsonMatch = response.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]) as TriageResult;
-        
-        // Log final response
-        logger.info('='.repeat(80));
-        logger.info('[AGENT] FINAL RESPONSE (Disease Info Query):');
-        logger.info(JSON.stringify(parsed, null, 2));
-        logger.info('='.repeat(80));
-        
-        return parsed;
-      }
+      // Extract markdown content (full response is markdown)
+      const markdownContent = response.trim();
 
-      throw new Error('Failed to parse LLM response');
+      // Build TriageResult from markdown response
+      const triageLevel = 'routine' as TriageLevel;
+      
+      // Extract key information from markdown for backward compatibility
+      const actionMatch = markdownContent.match(/##\s*[📚💊💡]*\s*(?:Về|Nguyên tắc|Hướng dẫn)[\s\S]*?\n([\s\S]*?)(?=\n##|$)/i);
+      const homeCareMatch = markdownContent.match(/##\s*[💡]*\s*Hướng dẫn[\s\S]*?\n([\s\S]*?)(?=\n##|$)/i);
+      
+      const action = actionMatch ? actionMatch[1].trim().split('\n')[0] : 'Thông tin giáo dục về bệnh/triệu chứng dựa trên hướng dẫn của Bộ Y Tế.';
+      const homeCareAdvice = homeCareMatch ? homeCareMatch[1].trim().substring(0, 500) : 'Thông tin về phòng ngừa và chăm sóc từ hướng dẫn của Bộ Y Tế.';
+
+      const parsed: TriageResult = {
+        triage_level: triageLevel,
+        symptom_summary: userText,
+        red_flags: [],
+        suspected_conditions: [],
+        cv_findings: {
+          model_used: 'none',
+          raw_output: {}
+        },
+        recommendation: {
+          action: action,
+          timeframe: 'Không áp dụng (đây là thông tin giáo dục)',
+          home_care_advice: homeCareAdvice,
+          warning_signs: 'Thông tin chỉ mang tính tham khảo giáo dục. Nếu bạn đang có triệu chứng, hãy đến gặp bác sĩ để được khám và chẩn đoán chính xác.'
+        },
+        // Add markdown response as additional field
+        message: markdownContent
+      } as any;
+        
+      // Log final response
+      logger.info('='.repeat(80));
+      logger.info('[AGENT] FINAL RESPONSE (Disease Info Query - Markdown):');
+      logger.info(markdownContent);
+      logger.info('[AGENT] FINAL RESPONSE (Disease Info Query - Structured):');
+      logger.info(JSON.stringify(parsed, null, 2));
+      logger.info('='.repeat(80));
+        
+      return parsed;
     } catch (error) {
       logger.error({ error }, 'Error processing disease info query');
       return this.getSafeDefaultResponse(userText);
@@ -419,7 +496,13 @@ Tạo response JSON (CHỈ JSON thuần, không có markdown):
       ? (cvResult.top_conditions[0] as any).model_used || 'derm_cv'
       : 'none';
 
-    const prompt = `Bạn là trợ lý y tế AI của Việt Nam. Dựa trên thông tin sau, hãy tạo một phản hồi có cấu trúc HOÀN TOÀN BẰNG TIẾNG VIỆT:
+    // Format guidelines for better readability
+    const formattedGuidelines = guidelines.map((g, i) => {
+      const content = typeof g === 'string' ? g : (g.content || g.snippet || JSON.stringify(g));
+      return `\n--- Guideline ${i + 1} ---\n${content}`;
+    }).join('\n\n');
+
+    const prompt = `Bạn là trợ lý y tế AI của Việt Nam. Dựa trên thông tin sau, hãy tạo một phản hồi TỰ NHIÊN, DỄ HIỂU bằng markdown HOÀN TOÀN BẰNG TIẾNG VIỆT.
 
 Mô tả triệu chứng: ${userText}
 
@@ -436,38 +519,57 @@ Mức độ khẩn cấp: ${triageResult.triage}
 Dấu hiệu cảnh báo: ${triageResult.red_flags?.join(', ') || 'Không có'}
 Lý do đánh giá: ${triageResult.reasoning}
 
-Hướng dẫn y tế từ Bộ Y Tế:
-${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
+═══════════════════════════════════════════════════════════════════════════════
+HƯỚNG DẪN Y TẾ TỪ BỘ Y TẾ (BẮT BUỘC PHẢI SỬ DỤNG):
+═══════════════════════════════════════════════════════════════════════════════
+${formattedGuidelines}
+═══════════════════════════════════════════════════════════════════════════════
 
-YÊU CẦU BẮT BUỘC:
+⚠️ QUAN TRỌNG: BẮT BUỘC sử dụng thông tin từ "Hướng dẫn y tế từ Bộ Y Tế" ở trên:
+- PHẢI dựa trên thông tin CỤ THỂ từ guidelines để giải thích, biện luận, so sánh
+- KHÔNG được tự ý tạo thông tin ngoài guidelines được cung cấp
+- Có thể giải thích nguyên tắc điều trị từ guidelines (KHÔNG kê đơn cụ thể, không khuyến nghị liều thuốc)
+- Nếu guidelines đề cập thuốc cụ thể, có thể giải thích: "Có thể sử dụng các thuốc bôi tại chỗ như retinoid, benzoyl peroxid (theo chỉ định của bác sĩ)"
+- Nếu guidelines đề cập phương pháp, có thể giải thích phương pháp đó một cách tự nhiên
+
+YÊU CẦU VỀ PHONG CÁCH VIẾT:
 1. VIẾT HOÀN TOÀN BẰNG TIẾNG VIỆT - không được dùng tiếng Anh trong response
-2. Field "action" phải viết trực tiếp hành động cần làm, bắt đầu bằng động từ (VD: "Bạn nên đến gặp bác sĩ...", "Hãy theo dõi triệu chứng...")
-3. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác"
-${cvResult.top_conditions.length === 0 ? '4. Phân tích hình ảnh không đủ tin cậy, chỉ dựa vào mô tả triệu chứng và guidelines.' : ''}
+2. Viết TỰ NHIÊN, DỄ HIỂU như đang trò chuyện với bệnh nhân
+3. CÓ THỂ biện luận, so sánh, giải thích "tại sao", "như thế nào" một cách tự do
+4. Sử dụng markdown để format (tiêu đề, danh sách, nhấn mạnh) cho dễ đọc
+5. PHẢI sử dụng thông tin từ "Hướng dẫn y tế từ Bộ Y Tế" ở trên - KHÔNG được tự ý tạo thông tin
+6. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác"
+${cvResult.top_conditions.length === 0 ? '7. Phân tích hình ảnh không đủ tin cậy, chỉ dựa vào mô tả triệu chứng và guidelines.' : ''}
 
-Hãy tạo response JSON với format sau (CHỈ JSON thuần, không có markdown):
-{
-  "triage_level": "${triageResult.triage}",
-  "symptom_summary": "Tóm tắt triệu chứng của người dùng bằng tiếng Việt (VD: Bị mụn nhọt và đau ở mặt)",
-  "red_flags": ${JSON.stringify(triageResult.red_flags || [])},
-  "suspected_conditions": [
-    ${cvResult.top_conditions.length > 0 ? cvResult.top_conditions.slice(0, 1).map((c: any) => 
-      `{"name": "${c.name}", "source": "cv_model", "confidence": "${c.prob > 0.8 ? 'high' : c.prob > 0.5 ? 'medium' : 'low'}"}`
-    ).join(',\n    ') : '[]'}
-  ],
-  "cv_findings": {
-    "model_used": "${cvModelUsed}",
-    "raw_output": ${JSON.stringify(cvResult.top_conditions.length > 0 ? {
-      top_predictions: cvResult.top_conditions.slice(0, 1).map((c: any) => ({ condition: c.name, probability: c.prob }))
-    } : {})}
-  },
-  "recommendation": {
-    "action": "Viết một câu hoàn chỉnh, trực tiếp hướng dẫn hành động tiếp theo cho người dùng dựa trên mức độ khẩn cấp và hướng dẫn của BYT.",
-    "timeframe": "Nêu rõ khung thời gian thực hiện hành động (VD: 'Ngay lập tức', 'Trong 24-48 giờ', 'Khi có thể').",
-    "home_care_advice": "Liệt kê các lời khuyên chăm sóc tại nhà phù hợp và an toàn, dựa trên hướng dẫn của BYT nếu có.",
-    "warning_signs": "Dấu hiệu cảnh báo cần đi khám ngay + disclaimer (VD: 'Nếu sưng đỏ lan rộng, sốt cao, đau tăng nhanh, hãy đến khám ngay. Thông tin chỉ mang tính tham khảo.')"
-  }
-}`;
+Hãy tạo một phản hồi markdown TỰ NHIÊN, có thể bao gồm:
+- Giải thích về tình trạng dựa trên triệu chứng và hình ảnh (nếu có)
+- So sánh các khả năng nếu có nhiều suspected conditions
+- Giải thích "tại sao" đưa ra kết luận này (explainability)
+- Hướng dẫn cụ thể về chăm sóc tại nhà dựa trên guidelines
+- Lời khuyên về hành động tiếp theo
+- Dấu hiệu cảnh báo cần đi khám ngay
+- Disclaimer về tính tham khảo
+
+Ví dụ format markdown (KHÔNG bắt buộc phải theo đúng format này, chỉ là gợi ý):
+## 📋 Tóm tắt tình trạng
+
+Dựa trên hình ảnh và mô tả triệu chứng của bạn...
+
+## 🔍 Phân tích
+
+[Giải thích, biện luận, so sánh tự do dựa trên guidelines]
+
+## 💡 Hướng dẫn chăm sóc tại nhà
+
+[Các lời khuyên CỤ THỂ từ guidelines về phương pháp điều trị tại chỗ, lưu ý về thuốc, cách chăm sóc]
+
+## ⚠️ Khi nào cần đi khám ngay
+
+[Dấu hiệu cảnh báo + disclaimer]
+
+---
+
+**Lưu ý quan trọng:** Thông tin này chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác.`;
 
     // Log prompt and input data before sending to LLM
     logger.info('='.repeat(80));
@@ -498,21 +600,159 @@ Hãy tạo response JSON với format sau (CHỈ JSON thuần, không có markdo
     const generations = await this.llm._generate([prompt]);
     const response = generations.generations[0][0].text;
 
-    // Extract JSON from response
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]) as TriageResult;
-      
-      // Log final response
-      logger.info('='.repeat(80));
-      logger.info('[AGENT] FINAL RESPONSE:');
-      logger.info(JSON.stringify(parsed, null, 2));
-      logger.info('='.repeat(80));
-      
-      return parsed;
-    }
+    // Extract markdown content (full response is markdown)
+    const markdownContent = response.trim();
 
-    throw new Error('Failed to parse LLM response');
+    // Build TriageResult from markdown response
+    const triageLevel = triageResult.triage as TriageLevel;
+    const suspectedCondition = cvResult.top_conditions.length > 0 ? cvResult.top_conditions[0].name : undefined;
+    
+    // Extract key information from markdown for backward compatibility
+    const actionMatch = markdownContent.match(/##\s*[📋💡⚠️🔍]*\s*(?:Hành động|Khi nào|Kết luận|Khuyến nghị)[\s\S]*?\n([\s\S]*?)(?=\n##|$)/i);
+    const homeCareMatch = markdownContent.match(/##\s*[💡]*\s*Hướng dẫn chăm sóc[\s\S]*?\n([\s\S]*?)(?=\n##|$)/i);
+    const warningMatch = markdownContent.match(/##\s*[⚠️]*\s*Khi nào cần đi khám[\s\S]*?\n([\s\S]*?)(?=\n##|$)/i);
+    
+    const action = actionMatch ? actionMatch[1].trim().split('\n')[0] : 'Bạn nên đến gặp bác sĩ để được thăm khám và chẩn đoán chính xác.';
+    const homeCareAdvice = homeCareMatch ? homeCareMatch[1].trim().substring(0, 500) : 'Giữ vệ sinh sạch sẽ và theo dõi triệu chứng.';
+    const warningSigns = warningMatch ? warningMatch[1].trim().substring(0, 300) : 'Nếu triệu chứng nặng hơn, hãy đến khám ngay. Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác.';
+
+    const parsed: TriageResult = {
+      triage_level: triageLevel,
+      symptom_summary: userText,
+      red_flags: triageResult.red_flags || [],
+      suspected_conditions: suspectedCondition ? [{
+        name: suspectedCondition,
+        source: 'cv_model' as ConditionSource,
+        confidence: cvResult.top_conditions.length > 0 && cvResult.top_conditions[0].prob > 0.5 ? 'medium' : 'low' as ConditionConfidence
+      }] : [],
+      cv_findings: {
+        model_used: cvModelUsed as any,
+        raw_output: cvResult.top_conditions.length > 0 ? {
+          top_predictions: cvResult.top_conditions.slice(0, 1).map((c: any) => ({ condition: c.name, probability: c.prob }))
+        } : {}
+      },
+      recommendation: {
+        action: action,
+        timeframe: triageLevel === 'emergency' ? 'Ngay lập tức' : triageLevel === 'urgent' ? 'Trong 24 giờ' : 'Khi có thể sắp xếp',
+        home_care_advice: homeCareAdvice,
+        warning_signs: warningSigns
+      },
+      // Add markdown response as additional field (extend TriageResult)
+      message: markdownContent
+    } as any;
+    
+    // Log final response
+    logger.info('='.repeat(80));
+    logger.info('[AGENT] FINAL RESPONSE (Markdown):');
+    logger.info(markdownContent);
+    logger.info('[AGENT] FINAL RESPONSE (Structured):');
+    logger.info(JSON.stringify(parsed, null, 2));
+    logger.info('='.repeat(80));
+    
+    return parsed;
+  }
+
+  /**
+   * Handle casual conversation/greeting - lightweight response
+   */
+  private async handleCasualConversation(
+    userText: string,
+    conversationContext?: string
+  ): Promise<TriageResult> {
+    try {
+      logger.info('[LIGHTWEIGHT] Handling casual conversation...');
+      
+      const prompt = `Bạn là trợ lý y tế thân thiện của Việt Nam. Người dùng nói: "${userText}"
+
+${conversationContext ? `Ngữ cảnh cuộc trò chuyện trước: ${conversationContext}` : ''}
+
+Hãy trả lời tự nhiên, ngắn gọn, thân thiện bằng tiếng Việt:
+- Nếu là câu chào, hãy chào lại và hỏi xem bạn có thể giúp gì về sức khỏe
+- Nếu là câu cảm ơn, hãy trả lời lịch sự
+- Nếu là câu hỏi đơn giản, hãy trả lời ngắn gọn
+- Luôn sẵn sàng hỗ trợ về vấn đề sức khỏe
+
+Viết bằng markdown, tự nhiên, không cần format cứng nhắc.`;
+
+      const generations = await this.llm._generate([prompt]);
+      const markdown = generations.generations[0][0].text.trim();
+
+      return this.buildLightweightResponse(markdown, 'routine', userText);
+    } catch (error) {
+      logger.error({ error }, 'Error handling casual conversation');
+      return this.buildLightweightResponse(
+        'Xin chào! Tôi có thể giúp gì cho bạn về vấn đề sức khỏe?',
+        'routine',
+        userText
+      );
+    }
+  }
+
+  /**
+   * Handle out of scope queries - lightweight response
+   */
+  private async handleOutOfScope(
+    userText: string,
+    intent: Intent
+  ): Promise<TriageResult> {
+    try {
+      logger.info('[LIGHTWEIGHT] Handling out of scope query...');
+      
+      const prompt = `Bạn là trợ lý y tế của Việt Nam. Người dùng hỏi: "${userText}"
+
+Câu hỏi này nằm ngoài phạm vi của hệ thống (${JSON.stringify(intent.entities)}).
+
+Hãy từ chối lịch sự và hướng dẫn họ đến kênh phù hợp:
+- Nếu hỏi về bảo hiểm/chi phí: hướng dẫn liên hệ cơ quan bảo hiểm hoặc bệnh viện
+- Nếu hỏi về thuốc nam/đông y: giải thích hệ thống chỉ hỗ trợ hướng dẫn của Bộ Y Tế
+- Luôn lịch sự, thân thiện
+
+Viết bằng tiếng Việt, markdown format, ngắn gọn.`;
+
+      const generations = await this.llm._generate([prompt]);
+      const markdown = generations.generations[0][0].text.trim();
+
+      return this.buildLightweightResponse(markdown, 'routine', userText);
+    } catch (error) {
+      logger.error({ error }, 'Error handling out of scope');
+      return this.buildLightweightResponse(
+        'Xin lỗi, câu hỏi này nằm ngoài phạm vi của hệ thống. Vui lòng liên hệ trực tiếp với cơ sở y tế để được hỗ trợ.',
+        'routine',
+        userText
+      );
+    }
+  }
+
+  /**
+   * Build lightweight response structure
+   */
+  private buildLightweightResponse(
+    markdown: string,
+    triageLevel: TriageLevel,
+    userText?: string
+  ): TriageResult {
+    // Extract first meaningful line for action field
+    const actionLine = markdown.split('\n').find(line => 
+      line.trim().length > 10 && !line.trim().startsWith('#')
+    ) || markdown.split('\n')[0] || 'Cảm ơn bạn đã liên hệ.';
+
+    return {
+      triage_level: triageLevel,
+      symptom_summary: userText || '',
+      red_flags: [],
+      suspected_conditions: [],
+      cv_findings: {
+        model_used: 'none',
+        raw_output: {}
+      },
+      recommendation: {
+        action: actionLine.trim(),
+        timeframe: 'Không áp dụng',
+        home_care_advice: '',
+        warning_signs: ''
+      },
+      message: markdown
+    } as any;
   }
 
   private getSafeDefaultResponse(userText: string): TriageResult {
