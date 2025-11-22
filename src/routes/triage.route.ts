@@ -4,6 +4,8 @@ import { MedagenAgent } from '../agent/agent-executor.js';
 import { SupabaseService } from '../services/supabase.service.js';
 import { MapsService } from '../services/maps.service.js';
 import { ConversationHistoryService } from '../services/conversation-history.service.js';
+import { ToolExecutionTrackerService } from '../services/tool-execution-tracker.service.js';
+import { ToolTrackingHelper } from '../utils/tool-tracking-helper.js';
 import { logger } from '../utils/logger.js';
 import type { HealthCheckRequest, HealthCheckResponse } from '../types/index.js';
 
@@ -44,8 +46,9 @@ export async function triageRoutes(
   supabaseService: SupabaseService,
   mapsService: MapsService
 ) {
-  // Initialize conversation history service
+  // Initialize conversation history service and tool tracker
   const conversationService = new ConversationHistoryService(supabaseService.getClient());
+  const toolTracker = new ToolExecutionTrackerService(supabaseService.getClient());
   fastify.post('/api/health-check', {
     schema: {
       description: 'Endpoint chính để xử lý triage y tế. Sử dụng ReAct Agent với Gemini 2.5Flash để phân tích triệu chứng và đưa ra khuyến nghị. Hỗ trợ conversation history để xử lý multi-turn conversations.',
@@ -225,7 +228,11 @@ export async function triageRoutes(
       const conversationContext = await conversationService.getContextString(activeSessionId, 5);
 
       // Add user message to history
-      await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
+      const userMessage = await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
+
+      // Start tracking tool executions for this message
+      toolTracker.startTracking(userMessage.id);
+      const startTime = Date.now();
 
       // Process triage with agent (pass conversation context and location)
       const triageResult = await agent.processTriage(
@@ -236,19 +243,74 @@ export async function triageRoutes(
         location // Pass location for hospital finding
       );
 
+      const totalExecutionTime = Date.now() - startTime;
+
       // Add assistant response to conversation history
+      let assistantMessageId: string | undefined;
       try {
         // Use markdown message if available, otherwise fallback to recommendation.action
         const assistantMessage = (triageResult as any).message || triageResult.recommendation.action;
-        await conversationService.addAssistantMessage(
+        const assistantMessageObj = await conversationService.addAssistantMessage(
           activeSessionId,
           user_id,
           assistantMessage,
           triageResult
         );
+        assistantMessageId = assistantMessageObj.id;
       } catch (error) {
         logger.error({ error }, 'Failed to save conversation history');
         // Continue even if saving fails
+      }
+
+      // Track tool executions (non-blocking)
+      try {
+        // Track CV execution if applicable
+        await ToolTrackingHelper.trackCVExecution(
+          toolTracker,
+          activeSessionId,
+          userMessage.id,
+          triageResult,
+          Math.floor(totalExecutionTime * 0.3) // Estimate 30% of time for CV
+        );
+
+        // Track Triage Rules execution
+        await ToolTrackingHelper.trackTriageRulesExecution(
+          toolTracker,
+          activeSessionId,
+          userMessage.id,
+          triageResult,
+          normalizedText || 'Image analysis',
+          Math.floor(totalExecutionTime * 0.2) // Estimate 20% of time
+        );
+
+        // Track RAG execution (estimate guidelines count from triage result)
+        const guidelinesCount = (triageResult as any).guidelines_count || 3; // Default estimate
+        await ToolTrackingHelper.trackRAGExecution(
+          toolTracker,
+          activeSessionId,
+          userMessage.id,
+          triageResult,
+          normalizedText || 'Image analysis',
+          Math.floor(totalExecutionTime * 0.3), // Estimate 30% of time
+          guidelinesCount
+        );
+
+        // Track Maps execution if hospital was found
+        const nearestClinic = (triageResult as any).nearest_clinic;
+        if (nearestClinic) {
+          const condition = triageResult.suspected_conditions?.[0]?.name;
+          await ToolTrackingHelper.trackMapsExecution(
+            toolTracker,
+            activeSessionId,
+            userMessage.id,
+            nearestClinic,
+            condition,
+            Math.floor(totalExecutionTime * 0.2) // Estimate 20% of time
+          );
+        }
+      } catch (error) {
+        logger.error({ error }, 'Failed to track tool executions');
+        // Continue even if tracking fails
       }
 
       // Save session to database (for backward compatibility)

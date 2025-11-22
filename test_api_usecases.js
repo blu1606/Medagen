@@ -26,6 +26,59 @@ const useCases = [
       user_id: 'test_user_2'
     }
   },
+  {
+    id: 11,
+    name: 'MCP Hospital - Emergency case với location',
+    expectedMCP: 'HOSPITAL',
+    payload: {
+      text: 'Tôi bị đau ngực dữ dội, khó thở, đổ mồ hôi lạnh',
+      user_id: 'test_user_11',
+      location: {
+        lat: 10.762622, // Ho Chi Minh City
+        lng: 106.660172
+      }
+    }
+  },
+  {
+    id: 12,
+    name: 'MCP Hospital - Urgent case với location',
+    expectedMCP: 'HOSPITAL',
+    payload: {
+      text: 'Tôi bị sốt cao 39 độ, đau đầu dữ dội, buồn nôn',
+      user_id: 'test_user_12',
+      location: {
+        lat: 21.028511, // Hanoi
+        lng: 105.804817
+      }
+    }
+  },
+  {
+    id: 13,
+    name: 'MCP Hospital - User yêu cầu tìm bệnh viện',
+    expectedMCP: 'HOSPITAL',
+    payload: {
+      text: 'Tôi cần tìm bệnh viện gần nhất để khám',
+      user_id: 'test_user_13',
+      location: {
+        lat: 10.762622,
+        lng: 106.660172
+      }
+    }
+  },
+  {
+    id: 14,
+    name: 'MCP CV + RAG + Hospital - Da liễu emergency với location',
+    expectedMCP: 'CV+RAG+HOSPITAL',
+    payload: {
+      text: 'Da tôi bị viêm nặng, đỏ rát, có mủ',
+      image_url: 'https://www.rosacea.org/sites/default/files/images/rosacea_subtype2.jpg',
+      user_id: 'test_user_14',
+      location: {
+        lat: 10.762622,
+        lng: 106.660172
+      }
+    }
+  },
   // {
   //   id: 3,
   //   name: 'MCP CSDL - Câu hỏi định nghĩa bệnh',
@@ -155,6 +208,8 @@ async function runTests() {
       
       const hasCVContent = response.data.cv_findings?.model_used && 
                           response.data.cv_findings.model_used !== 'none';
+      
+      const hasHospitalContent = !!response.data.nearest_clinic;
 
       const result = {
         id: useCase.id,
@@ -171,7 +226,10 @@ async function runTests() {
         ragDetected: hasRAGContent,
         csdlDetected: hasCSDLContent,
         cvDetected: hasCVContent,
+        hospitalDetected: hasHospitalContent,
         cvModel: response.data.cv_findings?.model_used || 'none',
+        hospitalName: response.data.nearest_clinic?.name || null,
+        hospitalDistance: response.data.nearest_clinic?.distance_km || null,
         responseLength: JSON.stringify(response.data).length
       };
 
@@ -200,12 +258,22 @@ async function runTests() {
         if (!result.ragDetected) validations.push('Expected RAG but not detected');
       }
       
+      if (useCase.expectedMCP === 'CV+RAG+HOSPITAL') {
+        if (!result.cvDetected) validations.push('Expected CV but not detected');
+        if (!result.ragDetected) validations.push('Expected RAG but not detected');
+        if (!result.hospitalDetected) validations.push('Expected Hospital but not detected');
+      }
+      
       if (useCase.expectedMCP === 'RAG' && !result.ragDetected) {
         validations.push('Expected RAG but not detected in response');
       }
       
       if (useCase.expectedMCP === 'CSDL' && !result.csdlDetected) {
         validations.push('Expected CSDL but not detected in response');
+      }
+      
+      if (useCase.expectedMCP === 'HOSPITAL') {
+        if (!result.hospitalDetected) validations.push('Expected Hospital but not detected');
       }
       
       if (useCase.expectedMCP === 'BOTH') {
@@ -240,6 +308,10 @@ async function runTests() {
       console.log(`   CV Detected: ${result.cvDetected ? '✅' : '❌'} (${result.cvModel})`);
       console.log(`   RAG Detected: ${result.ragDetected ? '✅' : '❌'}`);
       console.log(`   CSDL Detected: ${result.csdlDetected ? '✅' : '❌'}`);
+      console.log(`   Hospital Detected: ${result.hospitalDetected ? '✅' : '❌'}`);
+      if (result.hospitalDetected) {
+        console.log(`   Hospital: ${result.hospitalName || 'N/A'} (${result.hospitalDistance ? result.hospitalDistance + 'km' : 'N/A'})`);
+      }
       console.log(`   Triage Level: ${result.triageLevel || 'N/A'}`);
       console.log(`   Suspected Conditions: ${result.hasSuspectedConditions ? 'Yes' : 'No'}`);
       console.log(`   Response Length: ${result.responseLength} chars`);
@@ -278,18 +350,26 @@ async function runTests() {
   console.log(`❌ Failed: ${failed}`);
   console.log(`📈 Success Rate: ${((passed / useCases.length) * 100).toFixed(1)}%`);
   
-  console.log('\n--- Detailed Results ---');
+  console.log('\n--- Detailed Results (Short) ---');
   results.forEach(r => {
     const icon = r.status === 'PASS' ? '✅' : r.status === 'WARNING' ? '⚠️' : '❌';
+    const mcpUsed = [];
+    if (r.cvDetected) mcpUsed.push('CV');
+    if (r.ragDetected) mcpUsed.push('RAG');
+    if (r.csdlDetected) mcpUsed.push('CSDL');
+    if (r.hospitalDetected) mcpUsed.push('HOSPITAL');
+    
     console.log(`${icon} UC${r.id}: ${r.name}`);
     if (r.status === 'PASS' || r.status === 'WARNING') {
-      console.log(`   Expected: ${r.expectedMCP} | RAG: ${r.ragDetected ? '✅' : '❌'} | CSDL: ${r.csdlDetected ? '✅' : '❌'}`);
-      console.log(`   Triage: ${r.triageLevel} | Duration: ${r.duration} | Length: ${r.responseLength} chars`);
-      if (r.validations) {
-        console.log(`   Issues: ${r.validations.join(', ')}`);
+      console.log(`   Expected: ${r.expectedMCP} | Used: ${mcpUsed.join('+') || 'None'} | Triage: ${r.triageLevel}`);
+      if (r.hospitalDetected) {
+        console.log(`   🏥 Hospital: ${r.hospitalName} (${r.hospitalDistance}km)`);
+      }
+      if (r.validations && r.validations.length > 0) {
+        console.log(`   ⚠️  ${r.validations.join(', ')}`);
       }
     } else {
-      console.log(`   Error: ${r.error}`);
+      console.log(`   ❌ Error: ${r.error}`);
     }
   });
 
@@ -308,25 +388,36 @@ async function runTests() {
   console.log('\n--- MCP Usage Statistics ---');
   let ragCount = 0;
   let csdlCount = 0;
+  let cvCount = 0;
+  let hospitalCount = 0;
   let bothCount = 0;
+  let allThreeCount = 0;
   let noneCount = 0;
   
   results.forEach(r => {
-    if (r.ragDetected && r.csdlDetected) {
-      bothCount++;
-    } else if (r.ragDetected) {
-      ragCount++;
-    } else if (r.csdlDetected) {
-      csdlCount++;
-    } else {
-      noneCount++;
+    if (r.status === 'PASS' || r.status === 'WARNING') {
+      if (r.ragDetected) ragCount++;
+      if (r.csdlDetected) csdlCount++;
+      if (r.cvDetected) cvCount++;
+      if (r.hospitalDetected) hospitalCount++;
+      
+      if (r.ragDetected && r.csdlDetected && r.hospitalDetected) {
+        allThreeCount++;
+      } else if (r.ragDetected && r.csdlDetected) {
+        bothCount++;
+      } else if (!r.ragDetected && !r.csdlDetected && !r.cvDetected && !r.hospitalDetected) {
+        noneCount++;
+      }
     }
   });
   
-  console.log(`   RAG Only: ${ragCount}`);
-  console.log(`   CSDL Only: ${csdlCount}`);
-  console.log(`   Both RAG + CSDL: ${bothCount}`);
-  console.log(`   Neither: ${noneCount}`);
+  console.log(`   CV: ${cvCount}`);
+  console.log(`   RAG: ${ragCount}`);
+  console.log(`   CSDL: ${csdlCount}`);
+  console.log(`   Hospital: ${hospitalCount}`);
+  console.log(`   RAG + CSDL: ${bothCount}`);
+  console.log(`   RAG + CSDL + Hospital: ${allThreeCount}`);
+  console.log(`   None: ${noneCount}`);
 
   console.log('\n--- Expected vs Actual MCP Usage ---');
   const mcpStats = {};
