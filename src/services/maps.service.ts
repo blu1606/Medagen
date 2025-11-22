@@ -219,10 +219,15 @@ out center;
       
       return bestMatch;
     } catch (error) {
+<<<<<<< HEAD
       logger.error({ error }, 'Error finding best matching hospital');
       // Fallback to nearest
       const hospitals = await this.findNearestHospitals(location, keyword, 1);
       return hospitals.length > 0 ? hospitals[0] : null;
+=======
+      logger.error({ error }, 'Google Maps API error');
+      return null;
+>>>>>>> b05b8cc4d5bbfeac84d83e1d77b32c4bfbc65b48
     }
   }
 

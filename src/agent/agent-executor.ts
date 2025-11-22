@@ -296,6 +296,66 @@ Ví dụ format markdown NGẮN GỌN:
   }
 
   /**
+<<<<<<< HEAD
+=======
+   * Process general health query
+   */
+  private async processGeneralHealthQuery(
+    userText: string,
+    conversationContext?: string
+  ): Promise<TriageResult> {
+      // Use RAG to find relevant information
+      logger.info('='.repeat(80));
+      logger.info('[AGENT WORKFLOW] processGeneralHealthQuery STARTED');
+      logger.info(`[AGENT] User text: "${userText}"`);
+      
+      const guidelineQuery = {
+        symptoms: userText,
+        suspected_conditions: [],
+        triage_level: 'routine'
+      };
+
+      logger.info(`[AGENT] Calling MCP RAG - searchGuidelines...`);
+      const guidelines = await this.ragService.searchGuidelines(guidelineQuery);
+      logger.info(`[AGENT] Retrieved ${guidelines.length} guidelines from RAG`);
+
+    const prompt = `Bạn là trợ lý y tế. User hỏi: ${userText}
+
+${conversationContext ? `Context: ${conversationContext}` : ''}
+
+Thông tin từ hướng dẫn:
+${guidelines.map((g, i) => `${i + 1}. ${g}`).join('\n')}
+
+Trả lời một cách hữu ích, giáo dục, an toàn. Nhấn mạnh không thay thế bác sĩ.
+
+JSON response (ONLY JSON):
+{
+  "triage_level": "routine",
+  "symptom_summary": "Câu hỏi về sức khỏe tổng quát",
+  "red_flags": [],
+  "suspected_conditions": [],
+  "cv_findings": {"model_used": "none", "raw_output": {}},
+  "recommendation": {
+    "action": "Thông tin giáo dục phù hợp",
+    "timeframe": "Không áp dụng",
+    "home_care_advice": "Lời khuyên chung về sức khỏe",
+    "warning_signs": "Nếu có triệu chứng bất thường, hãy gặp bác sĩ"
+  }
+}`;
+
+    const generations = await this.llm._generate([prompt]);
+    const response = generations.generations[0][0].text;
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]) as TriageResult;
+    }
+
+    return this.getSafeDefaultResponse(userText);
+  }
+
+  /**
+>>>>>>> b05b8cc4d5bbfeac84d83e1d77b32c4bfbc65b48
    * Custom agent workflow when image is provided
    * This ensures CV tools are actually called, not hallucinated by LLM
    */

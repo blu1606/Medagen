@@ -230,17 +230,25 @@ export async function triageRoutes(
       // Add user message to history
       const userMessage = await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
 
+<<<<<<< HEAD
       // Start tracking tool executions for this message
       toolTracker.startTracking(userMessage.id);
       const startTime = Date.now();
 
       // Process triage with agent (pass conversation context and location)
+=======
+      // Process triage with agent (pass conversation context)
+>>>>>>> b05b8cc4d5bbfeac84d83e1d77b32c4bfbc65b48
       const triageResult = await agent.processTriage(
         normalizedText || 'Da tôi bị gì thế này',
         normalizedImageUrl,
         user_id,
+<<<<<<< HEAD
         conversationContext, // Pass context separately for better agent handling
         location // Pass location for hospital finding
+=======
+        conversationContext // Pass context separately for better agent handling
+>>>>>>> b05b8cc4d5bbfeac84d83e1d77b32c4bfbc65b48
       );
 
       const totalExecutionTime = Date.now() - startTime;

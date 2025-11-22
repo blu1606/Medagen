@@ -308,10 +308,13 @@ async function runTests() {
       console.log(`   CV Detected: ${result.cvDetected ? '✅' : '❌'} (${result.cvModel})`);
       console.log(`   RAG Detected: ${result.ragDetected ? '✅' : '❌'}`);
       console.log(`   CSDL Detected: ${result.csdlDetected ? '✅' : '❌'}`);
+<<<<<<< HEAD
       console.log(`   Hospital Detected: ${result.hospitalDetected ? '✅' : '❌'}`);
       if (result.hospitalDetected) {
         console.log(`   Hospital: ${result.hospitalName || 'N/A'} (${result.hospitalDistance ? result.hospitalDistance + 'km' : 'N/A'})`);
       }
+=======
+>>>>>>> b05b8cc4d5bbfeac84d83e1d77b32c4bfbc65b48
       console.log(`   Triage Level: ${result.triageLevel || 'N/A'}`);
       console.log(`   Suspected Conditions: ${result.hasSuspectedConditions ? 'Yes' : 'No'}`);
       console.log(`   Response Length: ${result.responseLength} chars`);
