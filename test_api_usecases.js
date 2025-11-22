@@ -1,6 +1,9 @@
 import axios from 'axios';
 
-const BASE_URL = 'http://localhost:7860/api/health-check';
+// Support both local and HuggingFace Space
+const BASE_URL = process.env.API_URL || 'https://medagen-backend.hf.space/api/health-check';
+const HEALTH_CHECK_URL = process.env.HEALTH_URL || BASE_URL.replace('/api/health-check', '/health');
+
 // npx tsx test_api_usecases.js
 const useCases = [
   {
@@ -101,7 +104,8 @@ let lastSessionId = null;
 
 async function runTests() {
   console.log('🚀 Starting MCP CV, RAG & CSDL API Tests...\n');
-  console.log(`Testing endpoint: ${BASE_URL}\n`);
+  console.log(`🌐 Testing endpoint: ${BASE_URL}`);
+  console.log(`🏥 Health check: ${HEALTH_CHECK_URL}\n`);
   console.log('='.repeat(80));
   
   const results = [];
@@ -120,10 +124,11 @@ async function runTests() {
     try {
       const startTime = Date.now();
       const response = await axios.post(BASE_URL, useCase.payload, {
-        timeout: 30000,
+        timeout: 60000, // Increased timeout for HuggingFace Space
         headers: {
           'Content-Type': 'application/json'
-        }
+        },
+        validateStatus: (status) => status < 500 // Accept 4xx as valid responses for testing
       });
       const duration = Date.now() - startTime;
 
@@ -229,12 +234,13 @@ async function runTests() {
       results.push(result);
 
       // Print result
-      console.log(`✅ Status: ${response.status} (${duration}ms)`);
+      const statusIcon = response.status === 200 ? '✅' : response.status < 300 ? '⚠️' : '❌';
+      console.log(`${statusIcon} Status: ${response.status} (${duration}ms)`);
       console.log(`   Expected MCP: ${result.expectedMCP}`);
       console.log(`   CV Detected: ${result.cvDetected ? '✅' : '❌'} (${result.cvModel})`);
       console.log(`   RAG Detected: ${result.ragDetected ? '✅' : '❌'}`);
       console.log(`   CSDL Detected: ${result.csdlDetected ? '✅' : '❌'}`);
-      console.log(`   Triage Level: ${result.triageLevel}`);
+      console.log(`   Triage Level: ${result.triageLevel || 'N/A'}`);
       console.log(`   Suspected Conditions: ${result.hasSuspectedConditions ? 'Yes' : 'No'}`);
       console.log(`   Response Length: ${result.responseLength} chars`);
       if (result.sessionId) {
@@ -376,21 +382,27 @@ async function runTests() {
 // Check if server is running
 async function checkServer() {
   try {
-    await axios.get('http://localhost:7860/health', { timeout: 5000 });
+    await axios.get(HEALTH_CHECK_URL, { timeout: 10000 });
     return true;
-  } catch {
+  } catch (error) {
+    console.error(`❌ Health check failed: ${error.message}`);
     return false;
   }
 }
 
 async function main() {
+  console.log(`🌐 Testing against: ${BASE_URL}`);
+  console.log(`🏥 Health check: ${HEALTH_CHECK_URL}\n`);
+  
   const serverRunning = await checkServer();
   if (!serverRunning) {
-    console.error('❌ Server is not running on http://localhost:7860');
-    console.error('Please start the server with: npm run dev');
+    console.error(`❌ Server is not responding at ${HEALTH_CHECK_URL}`);
+    console.error('Please check if the HuggingFace Space is running or set API_URL environment variable');
+    console.error('Example: API_URL=https://your-space.hf.space/api/health-check npx tsx test_api_usecases.js');
     process.exit(1);
   }
   
+  console.log('✅ Server is responding!\n');
   await runTests();
 }
 

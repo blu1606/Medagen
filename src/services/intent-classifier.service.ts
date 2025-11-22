@@ -32,10 +32,11 @@ export class IntentClassifierService {
     'thông tin về', 'tìm hiểu về', 'định nghĩa', 'nguyên nhân'
   ];
 
-  private readonly TREATMENT_KEYWORDS = [
-    'điều trị', 'chữa', 'phòng ngừa', 'phòng bệnh', 'cách chữa',
-    'cách điều trị', 'thuốc', 'liệu pháp'
-  ];
+  // Treatment keywords can be used for future treatment-related intent classification
+  // private readonly TREATMENT_KEYWORDS = [
+  //   'điều trị', 'chữa', 'phòng ngừa', 'phòng bệnh', 'cách chữa',
+  //   'cách điều trị', 'thuốc', 'liệu pháp'
+  // ];
 
   private readonly OUT_OF_SCOPE_KEYWORDS = [
     'bảo hiểm', 'bhyt', 'chi phí', 'giá', 'thủ tục',

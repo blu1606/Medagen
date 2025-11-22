@@ -168,7 +168,7 @@ export async function triageRoutes(
       const validationResult = healthCheckSchema.safeParse(request.body);
       
       if (!validationResult.success) {
-        logger.warn('Invalid request body:', validationResult.error);
+        logger.warn({ error: validationResult.error }, 'Invalid request body');
         return reply.status(400).send({
           error: 'Invalid request',
           details: validationResult.error.errors
@@ -223,13 +223,12 @@ export async function triageRoutes(
       // Add user message to history
       await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
 
-      // Process triage with agent (pass conversation context and session ID for WebSocket streaming)
+      // Process triage with agent (pass conversation context)
       const triageResult = await agent.processTriage(
         normalizedText || 'Da tôi bị gì thế này',
         normalizedImageUrl,
         user_id,
-        conversationContext, // Pass context separately for better agent handling
-        activeSessionId // Pass session ID for WebSocket streaming
+        conversationContext // Pass context separately for better agent handling
       );
 
       // Add assistant response to conversation history
@@ -242,7 +241,7 @@ export async function triageRoutes(
           triageResult
         );
       } catch (error) {
-        logger.error('Failed to save conversation history:', error);
+        logger.error({ error }, 'Failed to save conversation history');
         // Continue even if saving fails
       }
 
@@ -256,7 +255,7 @@ export async function triageRoutes(
           location
         });
       } catch (error) {
-        logger.error('Failed to save session:', error);
+        logger.error({ error }, 'Failed to save session');
         // Continue even if saving fails
       }
 
@@ -266,7 +265,7 @@ export async function triageRoutes(
         try {
           nearestClinic = await mapsService.findNearestClinic(location);
         } catch (error) {
-          logger.error('Failed to find nearest clinic:', error);
+          logger.error({ error }, 'Failed to find nearest clinic');
           // Continue without clinic info
         }
       }
@@ -282,7 +281,7 @@ export async function triageRoutes(
 
       return reply.status(200).send(response);
     } catch (error) {
-      logger.error('Health check error:', error);
+      logger.error({ error }, 'Health check error');
       
       return reply.status(500).send({
         error: 'Internal server error',

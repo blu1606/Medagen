@@ -5,11 +5,17 @@ FROM node:18-alpine AS builder
 WORKDIR /app
 
 # Copy package files
-COPY package*.json ./
+COPY package.json ./
+COPY package-lock.json* ./
 COPY tsconfig.json ./
 
 # Install all dependencies (including devDependencies for build)
-RUN npm ci --legacy-peer-deps
+# Use npm ci if package-lock.json exists, otherwise use npm install
+RUN if [ -f package-lock.json ]; then \
+      npm ci --legacy-peer-deps; \
+    else \
+      npm install --legacy-peer-deps; \
+    fi
 
 # Copy source code
 COPY src ./src
@@ -27,11 +33,16 @@ WORKDIR /app
 RUN apk add --no-cache dumb-init
 
 # Copy package files
-COPY package*.json ./
+COPY package.json ./
+COPY package-lock.json* ./
 
 # Install production dependencies only
-RUN npm ci --only=production --legacy-peer-deps && \
-    npm cache clean --force
+# Use npm ci if package-lock.json exists, otherwise use npm install
+RUN if [ -f package-lock.json ]; then \
+      npm ci --only=production --legacy-peer-deps && npm cache clean --force; \
+    else \
+      npm install --only=production --legacy-peer-deps && npm cache clean --force; \
+    fi
 
 # Copy built files from builder stage
 COPY --from=builder /app/dist ./dist

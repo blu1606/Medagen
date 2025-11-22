@@ -27,7 +27,7 @@ export function createDermCVTool(cvService: CVService): DynamicTool {
         
         return JSON.stringify({ top_predictions });
       } catch (error) {
-        logger.error('derm_cv tool error:', error);
+        logger.error({ error }, 'derm_cv tool error');
         return JSON.stringify({ error: 'Failed to analyze dermatology image', top_predictions: [] });
       }
     }
@@ -58,7 +58,7 @@ export function createEyeCVTool(cvService: CVService): DynamicTool {
         
         return JSON.stringify({ top_predictions });
       } catch (error) {
-        logger.error('eye_cv tool error:', error);
+        logger.error({ error }, 'eye_cv tool error');
         return JSON.stringify({ error: 'Failed to analyze eye image', top_predictions: [] });
       }
     }
@@ -89,7 +89,7 @@ export function createWoundCVTool(cvService: CVService): DynamicTool {
         
         return JSON.stringify({ top_predictions });
       } catch (error) {
-        logger.error('wound_cv tool error:', error);
+        logger.error({ error }, 'wound_cv tool error');
         return JSON.stringify({ error: 'Failed to analyze wound image', top_predictions: [] });
       }
     }

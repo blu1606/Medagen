@@ -26,8 +26,8 @@ export class GeminiEmbedding extends Embeddings {
       
       return embeddings;
     } catch (error) {
-      logger.error('Error generating embeddings:', error);
-      throw new Error(`Embedding error: ${error}`);
+      logger.error({ error }, 'Error generating embeddings');
+      throw new Error(`Embedding error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -37,8 +37,8 @@ export class GeminiEmbedding extends Embeddings {
       const result = await model.embedContent(text);
       return result.embedding.values;
     } catch (error) {
-      logger.error('Error generating query embedding:', error);
-      throw new Error(`Query embedding error: ${error}`);
+      logger.error({ error }, 'Error generating query embedding');
+      throw new Error(`Query embedding error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

@@ -1,10 +1,11 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { CVService } from '../services/cv.service.js';
+// import { CVService } from '../services/cv.service.js'; // Unused for now, can be used for future health checks
 import { config } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 
 export async function healthRoutes(fastify: FastifyInstance) {
-  const cvService = new CVService();
+  // CV service can be used for health checks in the future
+  // const cvService = new CVService();
 
   fastify.get('/health', {
     schema: {
@@ -38,7 +39,7 @@ export async function healthRoutes(fastify: FastifyInstance) {
         }
       }
     }
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
+  }, async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
       logger.info('Health check requested');
 
@@ -75,7 +76,7 @@ export async function healthRoutes(fastify: FastifyInstance) {
 
       return reply.status(200).send(health);
     } catch (error) {
-      logger.error('Health check error:', error);
+      logger.error({ error }, 'Health check error');
       return reply.status(500).send({
         status: 'error',
         message: 'Health check failed'

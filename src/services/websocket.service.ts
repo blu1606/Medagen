@@ -23,7 +23,8 @@ export class WebSocketConnectionManager {
   // Configuration
   private readonly INACTIVITY_TIMEOUT = 30 * 60 * 1000; // 30 minutes
   private readonly RATE_LIMIT = 100; // messages per minute
-  private readonly RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
+  // Rate limit window can be used for future rate limiting implementation
+  // private readonly RATE_LIMIT_WINDOW = 60 * 1000; // 1 minute
 
   constructor() {
     // Start cleanup task
@@ -56,7 +57,7 @@ export class WebSocketConnectionManager {
     });
 
     ws.on('error', (error) => {
-      logger.error(`WebSocket error for session ${sessionId}:`, error);
+      logger.error({ error, sessionId }, 'WebSocket error');
       this.removeConnection(sessionId);
     });
   }
@@ -72,7 +73,7 @@ export class WebSocketConnectionManager {
           ws.close();
         }
       } catch (error) {
-        logger.error(`Error closing WebSocket for session ${sessionId}:`, error);
+        logger.error({ error, sessionId }, 'Error closing WebSocket');
       }
     }
 
@@ -116,11 +117,11 @@ export class WebSocketConnectionManager {
       const count = this.messageCount.get(sessionId) || 0;
       this.messageCount.set(sessionId, count + 1);
 
-      logger.debug(`Message sent to session ${sessionId}:`, { type: message.type });
+      logger.debug({ sessionId, messageType: message.type }, 'Message sent to session');
 
       return true;
     } catch (error) {
-      logger.error(`Error sending message to session ${sessionId}:`, error);
+      logger.error({ error, sessionId }, 'Error sending message');
       return false;
     }
   }

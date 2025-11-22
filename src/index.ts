@@ -36,7 +36,7 @@ async function startServer() {
     await fastify.register(websocket, {
       options: {
         maxPayload: 10 * 1024, // 10KB max message size
-        verifyClient: (info, callback) => {
+        verifyClient: (_info, callback) => {
           // Optional: Add custom verification logic here
           callback(true);
         }
@@ -44,7 +44,7 @@ async function startServer() {
     });
 
     // Register Swagger
-    await fastify.register(swagger, swaggerOptions);
+    await fastify.register(swagger as any, swaggerOptions);
     await fastify.register(swaggerUi, swaggerUiOptions);
 
     // Initialize services
@@ -62,7 +62,7 @@ async function startServer() {
     await registerRoutes(fastify, agent, supabaseService, mapsService);
 
     // Add request logging
-    fastify.addHook('onRequest', async (request, reply) => {
+    fastify.addHook('onRequest', async (request) => {
       logger.info({
         method: request.method,
         url: request.url,
@@ -75,29 +75,30 @@ async function startServer() {
       logger.info({
         method: request.method,
         url: request.url,
-        statusCode: reply.statusCode,
-        responseTime: reply.getResponseTime()
+        statusCode: reply.statusCode
       }, 'Request completed');
     });
 
     // Error handler
-    fastify.setErrorHandler((error, request, reply) => {
+    fastify.setErrorHandler((error, _request, reply) => {
       // Handle validation errors (Fastify schema validation)
-      if (error.validation) {
+      if (error && typeof error === 'object' && 'validation' in error && error.validation) {
+        const validationError = error as { validation?: unknown; message?: string };
         logger.warn({ validation: error.validation }, 'Validation error');
         return reply.status(400).send({
           error: 'Validation Error',
-          message: error.message,
+          message: validationError.message || 'Validation failed',
           details: error.validation
         });
       }
 
       // Handle other errors
-      logger.error(error, 'Unhandled error');
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error({ error }, 'Unhandled error');
       
-      reply.status(500).send({
+      return reply.status(500).send({
         error: 'Internal Server Error',
-        message: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred'
+        message: process.env.NODE_ENV === 'development' ? errorMessage : 'An error occurred'
       });
     });
 
@@ -113,7 +114,7 @@ async function startServer() {
     logger.info(`🔌 WebSocket endpoint: ws://${host}:${port}/ws/chat`);
     logger.info(`📚 Swagger docs: http://${host}:${port}/docs`);
   } catch (error) {
-    logger.error(error, 'Failed to start server');
+    logger.error({ error }, 'Failed to start server');
     process.exit(1);
   }
 }
