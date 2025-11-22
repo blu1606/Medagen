@@ -82,7 +82,7 @@ npm run seed
 ### 5. Start Development Server
 
 ```bash
-kill -9 $(lsof -t -i :7860)
+Stop-Process -Id (Get-NetTCPConnection -LocalPort 7860).OwningProcess -Force
 npm run dev
 ```
 

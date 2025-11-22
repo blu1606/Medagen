@@ -158,19 +158,23 @@ export class MedagenAgent {
     conversationContext?: string
   ): Promise<TriageResult> {
     try {
-      logger.info('Processing disease info query...');
+      logger.info('='.repeat(80));
+      logger.info('[AGENT WORKFLOW] processDiseaseInfoQuery STARTED');
+      logger.info(`[AGENT] User text: "${userText}"`);
+      logger.info(`[AGENT] Intent: ${JSON.stringify(intent, null, 2)}`);
 
       let guidelines: any[] = [];
 
       // Step 1: Try structured knowledge base first (SQL filtering)
       if (intent.entities.disease) {
-        logger.info(`Searching structured knowledge for disease: ${intent.entities.disease}`);
+        logger.info(`[AGENT] Step 1: Searching structured knowledge for disease: ${intent.entities.disease}`);
         const disease = await this.knowledgeBase.findDisease(intent.entities.disease);
         
         if (disease) {
-          logger.info(`Found disease: ${disease.name} (ID: ${disease.id})`);
+          logger.info(`[AGENT] Found disease: ${disease.name} (ID: ${disease.id})`);
           
           // Query with disease filter
+          logger.info(`[AGENT] Calling MCP CSDL - queryStructuredKnowledge...`);
           const structuredResults = await this.knowledgeBase.queryStructuredKnowledge({
             disease: disease.name,
             infoDomain: intent.entities.info_domain,
@@ -179,23 +183,30 @@ export class MedagenAgent {
 
           if (structuredResults.length > 0) {
             guidelines = structuredResults;
-            logger.info(`Retrieved ${guidelines.length} structured knowledge chunks`);
+            logger.info(`[AGENT] Retrieved ${guidelines.length} structured knowledge chunks from CSDL`);
+          } else {
+            logger.info(`[AGENT] CSDL returned 0 results, will try RAG fallback`);
           }
+        } else {
+          logger.info(`[AGENT] Disease not found in CSDL, will try RAG fallback`);
         }
       }
 
       // Step 2: Fallback to RAG if no structured results
       if (guidelines.length === 0) {
-        logger.info('Using RAG fallback for semantic search...');
+        logger.info('[AGENT] Step 2: Using RAG fallback for semantic search...');
         const guidelineQuery = {
           symptoms: userText,
           suspected_conditions: intent.entities.disease ? [intent.entities.disease] : [],
           triage_level: 'routine'
         };
 
+        logger.info(`[AGENT] Calling MCP RAG - searchGuidelines...`);
         guidelines = await this.ragService.searchGuidelines(guidelineQuery);
-        logger.info(`Retrieved ${guidelines.length} guideline snippets from RAG`);
+        logger.info(`[AGENT] Retrieved ${guidelines.length} guideline snippets from RAG`);
       }
+      
+      logger.info(`[AGENT] Total guidelines collected: ${guidelines.length}`);
 
       // Use LLM to synthesize educational response
       const prompt = `Bạn là trợ lý y tế giáo dục, dựa trên hướng dẫn của Bộ Y Tế.
@@ -255,14 +266,20 @@ Tạo response JSON (ONLY JSON, no markdown):
     userText: string,
     conversationContext?: string
   ): Promise<TriageResult> {
-    // Use RAG to find relevant information
-    const guidelineQuery = {
-      symptoms: userText,
-      suspected_conditions: [],
-      triage_level: 'routine'
-    };
+      // Use RAG to find relevant information
+      logger.info('='.repeat(80));
+      logger.info('[AGENT WORKFLOW] processGeneralHealthQuery STARTED');
+      logger.info(`[AGENT] User text: "${userText}"`);
+      
+      const guidelineQuery = {
+        symptoms: userText,
+        suspected_conditions: [],
+        triage_level: 'routine'
+      };
 
-    const guidelines = await this.ragService.searchGuidelines(guidelineQuery);
+      logger.info(`[AGENT] Calling MCP RAG - searchGuidelines...`);
+      const guidelines = await this.ragService.searchGuidelines(guidelineQuery);
+      logger.info(`[AGENT] Retrieved ${guidelines.length} guidelines from RAG`);
 
     const prompt = `Bạn là trợ lý y tế. User hỏi: ${userText}
 
@@ -340,7 +357,7 @@ JSON response (ONLY JSON):
       logger.info(`Triage level: ${triageResult.triage}`);
 
       // Step 3: Get guidelines from RAG
-      logger.info('Step 3: Retrieving medical guidelines...');
+      logger.info('[AGENT] Step 3: Retrieving medical guidelines from RAG...');
       const suspectedConditions = cvResult.top_conditions.slice(0, 2).map(c => c.name);
       const guidelineInput = {
         symptoms: userText,
@@ -348,8 +365,9 @@ JSON response (ONLY JSON):
         triage_level: triageResult.triage
       };
 
+      logger.info(`[AGENT] Calling MCP RAG - searchGuidelines...`);
       const guidelines = await this.ragService.searchGuidelines(guidelineInput);
-      logger.info(`Retrieved ${guidelines.length} guideline snippets`);
+      logger.info(`[AGENT] Retrieved ${guidelines.length} guideline snippets from RAG`);
 
       // Step 4: Use LLM to synthesize final response
       logger.info('Step 4: Synthesizing final response with LLM...');
