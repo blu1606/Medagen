@@ -2,7 +2,6 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from '../utils/logger.js';
 import { ConversationHistoryService } from './conversation-history.service.js';
 import { ToolExecutionTrackerService } from './tool-execution-tracker.service.js';
-import { GeminiLLM } from '../agent/gemini-llm.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -91,7 +90,6 @@ export class ReportGenerationService {
   private supabaseClient: SupabaseClient;
   private conversationService: ConversationHistoryService;
   private toolTracker: ToolExecutionTrackerService;
-  private llm: GeminiLLM;
 
   constructor(
     supabaseClient: SupabaseClient,
@@ -101,7 +99,6 @@ export class ReportGenerationService {
     this.supabaseClient = supabaseClient;
     this.conversationService = conversationService;
     this.toolTracker = toolTracker;
-    this.llm = new GeminiLLM();
   }
 
   /**
@@ -366,177 +363,6 @@ export class ReportGenerationService {
       return 'low';
     }
     return 'medium';
-  }
-
-  /**
-   * Generate markdown report using LLM (Optional - chỉ dùng cho display)
-   */
-  private async generateMarkdownReport(
-    reportContent: MedicalReport,
-    reportType: string
-  ): Promise<string> {
-    const prompt = `Bạn là trợ lý y tế chuyên nghiệp. Hãy tạo một báo cáo tổng hợp đầy đủ về cuộc trò chuyện y tế dựa trên dữ liệu sau.
-
-LOẠI BÁO CÁO: ${reportType === 'full' ? 'Báo cáo đầy đủ' : reportType === 'summary' ? 'Tóm tắt' : 'Chỉ công cụ'}
-
-THÔNG TIN PHIÊN:
-- Session ID: ${reportContent.session_info.session_id}
-- Thời gian bắt đầu: ${reportContent.session_info.created_at}
-- Thời gian cập nhật: ${reportContent.session_info.updated_at}
-- Số lượng tin nhắn: ${reportContent.session_info.message_count}
-
-LỊCH SỬ HỘI THOẠI:
-${reportContent.conversation_timeline.map((msg, idx) => `
-${idx + 1}. [${msg.role === 'user' ? 'Người dùng' : 'Hệ thống'}] (${msg.timestamp})
-   ${msg.role === 'user' ? 'Câu hỏi/Triệu chứng:' : 'Phản hồi:'}
-   ${msg.content}
-   ${msg.image_url ? '📷 [Có hình ảnh đính kèm]' : ''}
-   ${msg.triage_result ? `\n   Mức độ khẩn cấp: ${msg.triage_result.triage_level}` : ''}
-`).join('\n')}
-
-THỰC THI CÔNG CỤ (TOOL EXECUTIONS):
-${reportContent.tool_executions.map((exec, idx) => `
-${idx + 1}. ${exec.tool_display_name || exec.tool_name}
-   - Thứ tự: ${exec.execution_order}
-   - Trạng thái: ${exec.status}
-   - Thời gian: ${exec.execution_time_ms}ms
-   - Input: ${JSON.stringify(exec.input_data, null, 2)}
-   - Output: ${JSON.stringify(exec.output_data, null, 2)}
-`).join('\n')}
-
-TÓM TẮT:
-- Mối quan tâm chính: ${reportContent.summary.main_concerns.join(', ')}
-- Các bệnh được đề xuất: ${reportContent.summary.top_conditions_suggested.map(c => `${c.name} (${c.confidence}, xuất hiện ${c.occurrences} lần)`).join(', ')}
-- Mức độ khẩn cấp: ${reportContent.summary.triage_levels_identified.map(t => `${t.level} (${t.count} lần)`).join(', ')}
-- Bệnh viện được đề xuất: ${reportContent.summary.hospitals_suggested.map(h => `${h.name} (${h.distance_km}km)`).join(', ') || 'Không có'}
-- Số guideline đã truy xuất: ${reportContent.summary.key_guidelines_retrieved}
-
-YÊU CẦU:
-1. Tạo báo cáo markdown CHUYÊN NGHIỆP, DỄ ĐỌC, CẤU TRÚC RÕ RÀNG
-2. Bao gồm TẤT CẢ thông tin quan trọng từ tools (CV top 3, RAG guidelines đầy đủ, triage reasoning)
-3. Sử dụng tiếng Việt hoàn toàn
-4. Format đẹp với markdown (tiêu đề, danh sách, bảng nếu cần)
-5. Nhấn mạnh các thông tin quan trọng mà response message có thể đã bỏ qua
-6. Bao gồm disclaimer y tế phù hợp
-
-CẤU TRÚC BÁO CÁO:
-# BÁO CÁO TỔNG HỢP - PHIÊN TƯ VẤN Y TẾ
-
-## 1. THÔNG TIN PHIÊN
-[Session info]
-
-## 2. TÓM TẮT CUỘC HỘI THOẠI
-[Summary of main concerns, conditions, triage levels]
-
-## 3. CHI TIẾT HỘI THOẠI
-[Full conversation timeline]
-
-## 4. PHÂN TÍCH CÔNG CỤ (TOOLS ANALYSIS)
-[Detailed tool execution results - CV top 3, RAG guidelines, etc.]
-
-## 5. KẾT LUẬN VÀ KHUYẾN NGHỊ
-[Final recommendations]
-
-**Lưu ý:** Thông tin chỉ mang tính tham khảo, không thay thế bác sĩ.`;
-
-    try {
-      const generations = await this.llm._generate([prompt]);
-      return generations.generations[0][0].text.trim();
-    } catch (error) {
-      logger.error({ error }, 'Error generating markdown report');
-      // Fallback to simple markdown
-      return this.generateFallbackMarkdown(reportContent);
-    }
-  }
-
-  /**
-   * Generate fallback markdown if LLM fails (Optional)
-   */
-  private generateFallbackMarkdown(
-    reportContent: MedicalReport
-  ): string {
-    return `# BÁO CÁO TỔNG HỢP - PHIÊN TƯ VẤN Y TẾ
-
-## 1. THÔNG TIN PHIÊN
-- **Session ID:** ${reportContent.session_info.session_id}
-- **Thời gian bắt đầu:** ${reportContent.session_info.created_at}
-- **Thời gian cập nhật:** ${reportContent.session_info.updated_at}
-- **Số lượng tin nhắn:** ${reportContent.session_info.message_count}
-
-## 2. TÓM TẮT CUỘC HỘI THOẠI
-
-### Mối quan tâm chính:
-${reportContent.summary.main_concerns.map(c => `- ${c}`).join('\n')}
-
-### Các bệnh được đề xuất:
-${reportContent.summary.top_conditions_suggested.map(c => 
-  `- **${c.name}** (${c.confidence}, xuất hiện ${c.occurrences} lần, nguồn: ${c.source})`
-).join('\n')}
-
-### Mức độ khẩn cấp:
-${reportContent.summary.triage_levels_identified.map(t => 
-  `- **${t.level}**: ${t.count} lần`
-).join('\n')}
-
-### Bệnh viện được đề xuất:
-${reportContent.summary.hospitals_suggested.length > 0
-  ? reportContent.summary.hospitals_suggested.map(h => 
-      `- **${h.name}** (${h.distance_km}km) - ${h.address}`
-    ).join('\n')
-  : '- Không có bệnh viện nào được đề xuất'
-}
-
-### Số guideline đã truy xuất:
-- ${reportContent.summary.key_guidelines_retrieved} guideline snippets
-
-## 3. CHI TIẾT HỘI THOẠI
-
-${reportContent.conversation_timeline.map((msg, idx) => `
-### Tin nhắn ${idx + 1} - ${msg.role === 'user' ? 'Người dùng' : 'Hệ thống'}
-
-**Thời gian:** ${msg.timestamp}
-
-**Nội dung:**
-${msg.content}
-
-${msg.image_url ? '📷 *Có hình ảnh đính kèm*' : ''}
-
-${msg.triage_result ? `
-**Kết quả phân tích:**
-- Mức độ khẩn cấp: ${msg.triage_result.triage_level}
-- Tóm tắt triệu chứng: ${msg.triage_result.symptom_summary}
-${msg.triage_result.suspected_conditions?.length > 0 ? `
-- Bệnh nghi ngờ:
-${msg.triage_result.suspected_conditions.map((c: any) => `  - ${c.name} (${c.confidence}, nguồn: ${c.source})`).join('\n')}
-` : ''}
-` : ''}
-`).join('\n')}
-
-## 4. PHÂN TÍCH CÔNG CỤ (TOOLS ANALYSIS)
-
-${reportContent.tool_executions.map((exec, idx) => `
-### ${idx + 1}. ${exec.tool_display_name || exec.tool_name}
-
-**Thứ tự thực thi:** ${exec.execution_order}
-**Trạng thái:** ${exec.status}
-**Thời gian:** ${exec.execution_time_ms}ms
-
-**Input:**
-\`\`\`json
-${JSON.stringify(exec.input_data, null, 2)}
-\`\`\`
-
-**Output:**
-\`\`\`json
-${JSON.stringify(exec.output_data, null, 2)}
-\`\`\`
-`).join('\n')}
-
-## 5. KẾT LUẬN VÀ KHUYẾN NGHỊ
-
-Dựa trên phân tích toàn bộ cuộc hội thoại và kết quả từ các công cụ, đây là báo cáo tổng hợp đầy đủ về phiên tư vấn y tế.
-
-**Lưu ý quan trọng:** Thông tin trong báo cáo này chỉ mang tính tham khảo giáo dục, không thay thế việc khám và chẩn đoán của bác sĩ. Nếu bạn có triệu chứng nghiêm trọng, hãy đến cơ sở y tế ngay lập tức.`;
   }
 
   /**
