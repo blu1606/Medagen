@@ -134,34 +134,36 @@ export class MedagenAgent {
       logger.info(`[AGENT] Total guidelines collected: ${guidelines.length}`);
 
       // Use LLM to synthesize educational response
-      const prompt = `Bạn là trợ lý y tế giáo dục, dựa trên hướng dẫn của Bộ Y Tế.
+      const prompt = `Bạn là trợ lý y tế giáo dục của Việt Nam, dựa trên hướng dẫn của Bộ Y Tế.
 
-User hỏi: ${userText}
+Câu hỏi của người dùng: ${userText}
 
-${conversationContext ? `Context trước đó: ${conversationContext}` : ''}
+${conversationContext ? `Ngữ cảnh cuộc trò chuyện trước: ${conversationContext}` : ''}
 
-Thông tin từ hướng dẫn BYT:
+Thông tin từ hướng dẫn Bộ Y Tế:
 ${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
 
-QUAN TRỌNG:
-- Đây là câu hỏi giáo dục, KHÔNG PHẢI chẩn đoán cá nhân
-- Trả lời dựa trên hướng dẫn BYT
-- Giải thích rõ ràng, dễ hiểu
-- Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, không thay thế bác sĩ"
-- KHÔNG kê đơn, KHÔNG khuyến nghị liều thuốc cụ thể
+YÊU CẦU BẮT BUỘC:
+1. VIẾT HOÀN TOÀN BẰNG TIẾNG VIỆT - không được dùng tiếng Anh trong response
+2. KHÔNG được tự thêm câu mở đầu kiểu "Based on...", "I've assessed..." hoặc "This is..."
+3. Đây là câu hỏi giáo dục, KHÔNG PHẢI chẩn đoán cá nhân
+4. Trả lời dựa trên hướng dẫn BYT, giải thích rõ ràng và dễ hiểu
+5. Field "action" phải viết trực tiếp nội dung giải thích, không có câu meta
+6. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, không thay thế bác sĩ"
+7. KHÔNG kê đơn, KHÔNG khuyến nghị liều thuốc cụ thể
 
-Tạo response JSON (ONLY JSON, no markdown):
+Tạo response JSON (CHỈ JSON thuần, không có markdown):
 {
   "triage_level": "routine",
-  "symptom_summary": "Tóm tắt câu hỏi của user",
+  "symptom_summary": "Tóm tắt câu hỏi của người dùng bằng tiếng Việt (VD: 'Hỏi về bệnh trứng cá và cách điều trị')",
   "red_flags": [],
   "suspected_conditions": [],
   "cv_findings": {"model_used": "none", "raw_output": {}},
   "recommendation": {
-    "action": "Giải thích thông tin về bệnh/triệu chứng dựa trên BYT guideline",
-    "timeframe": "Không áp dụng (vì đây là thông tin giáo dục)",
-    "home_care_advice": "Thông tin hữu ích từ guideline",
-    "warning_signs": "Luôn nhấn mạnh: Thông tin chỉ mang tính tham khảo. Nếu có triệu chứng, hãy đến bác sĩ để được khám và chẩn đoán chính xác."
+    "action": "Viết trực tiếp nội dung giải thích về bệnh/triệu chứng dựa trên hướng dẫn BYT (VD: 'Bệnh trứng cá là tình trạng viêm da mãn tính...')",
+    "timeframe": "Không áp dụng (đây là thông tin giáo dục, không phải trường hợp cụ thể)",
+    "home_care_advice": "Thông tin hữu ích từ guideline về phòng ngừa và chăm sóc",
+    "warning_signs": "Nhắc nhở: Thông tin chỉ mang tính tham khảo giáo dục. Nếu bạn đang có triệu chứng, hãy đến gặp bác sĩ để được khám và chẩn đoán chính xác."
   }
 }`;
 
@@ -400,36 +402,36 @@ Tạo response JSON (ONLY JSON, no markdown):
       ? (cvResult.top_conditions[0] as any).model_used || 'derm_cv'
       : 'none';
 
-    const prompt = `Bạn là trợ lý y tế AI. Dựa trên thông tin sau, hãy tạo một phản hồi có cấu trúc:
+    const prompt = `Bạn là trợ lý y tế AI của Việt Nam. Dựa trên thông tin sau, hãy tạo một phản hồi có cấu trúc HOÀN TOÀN BẰNG TIẾNG VIỆT:
 
-User input: ${userText}
+Mô tả triệu chứng: ${userText}
 
-${conversationContext ? `Conversation context: ${conversationContext}` : ''}
+${conversationContext ? `Ngữ cảnh cuộc trò chuyện trước: ${conversationContext}` : ''}
 
 ${cvResult.top_conditions.length > 0 ? `
-CV Analysis Results (chỉ các kết quả có độ tin cậy cao):
+Kết quả phân tích hình ảnh (chỉ các kết quả có độ tin cậy cao):
 ${cvResult.top_conditions.map((c: any, i: number) => `${i + 1}. ${c.name}: ${(c.prob * 100).toFixed(1)}%`).join('\n')}
 ` : `
 Lưu ý: Phân tích hình ảnh không cho kết quả đủ tin cậy, sẽ dựa chủ yếu vào mô tả triệu chứng của người dùng.
 `}
 
-Triage Level: ${triageResult.triage}
-Red Flags: ${triageResult.red_flags?.join(', ') || 'Không có'}
-Reasoning: ${triageResult.reasoning}
+Mức độ khẩn cấp: ${triageResult.triage}
+Dấu hiệu cảnh báo: ${triageResult.red_flags?.join(', ') || 'Không có'}
+Lý do đánh giá: ${triageResult.reasoning}
 
-Medical Guidelines:
+Hướng dẫn y tế từ Bộ Y Tế:
 ${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
 
-QUAN TRỌNG:
-${cvResult.top_conditions.length === 0 ? '- Phân tích hình ảnh không đủ tin cậy, chỉ dựa vào mô tả triệu chứng và guidelines.' : ''}
-- Chỉ đưa suspected_conditions từ CV nếu có và có độ tin cậy cao.
-- Nếu CV results không phù hợp hoặc confidence thấp, chỉ dựa vào user symptoms và guidelines.
-- Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác"
+YÊU CẦU BẮT BUỘC:
+1. VIẾT HOÀN TOÀN BẰNG TIẾNG VIỆT - không được dùng tiếng Anh trong response
+2. Field "action" phải viết trực tiếp hành động cần làm, bắt đầu bằng động từ (VD: "Bạn nên đến gặp bác sĩ...", "Hãy theo dõi triệu chứng...")
+3. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác"
+${cvResult.top_conditions.length === 0 ? '4. Phân tích hình ảnh không đủ tin cậy, chỉ dựa vào mô tả triệu chứng và guidelines.' : ''}
 
-Hãy tạo response JSON với format sau (ONLY JSON, no markdown):
+Hãy tạo response JSON với format sau (CHỈ JSON thuần, không có markdown):
 {
   "triage_level": "${triageResult.triage}",
-  "symptom_summary": "Tóm tắt triệu chứng của người dùng bằng tiếng Việt",
+  "symptom_summary": "Tóm tắt triệu chứng của người dùng bằng tiếng Việt (VD: Bị mụn nhọt và đau ở mặt)",
   "red_flags": ${JSON.stringify(triageResult.red_flags || [])},
   "suspected_conditions": [
     ${cvResult.top_conditions.length > 0 ? cvResult.top_conditions.slice(0, 1).map((c: any) => 
@@ -443,10 +445,10 @@ Hãy tạo response JSON với format sau (ONLY JSON, no markdown):
     } : {})}
   },
   "recommendation": {
-    "action": "Hành động cụ thể người dùng nên làm tiếp theo",
-    "timeframe": "Khung thời gian",
-    "home_care_advice": "Lời khuyên chăm sóc tại nhà dựa trên guidelines",
-    "warning_signs": "Dấu hiệu cảnh báo cần đi khám ngay"
+    "action": "Viết một câu hoàn chỉnh, trực tiếp hướng dẫn hành động tiếp theo cho người dùng dựa trên mức độ khẩn cấp và hướng dẫn của BYT.",
+    "timeframe": "Nêu rõ khung thời gian thực hiện hành động (VD: 'Ngay lập tức', 'Trong 24-48 giờ', 'Khi có thể').",
+    "home_care_advice": "Liệt kê các lời khuyên chăm sóc tại nhà phù hợp và an toàn, dựa trên hướng dẫn của BYT nếu có.",
+    "warning_signs": "Dấu hiệu cảnh báo cần đi khám ngay + disclaimer (VD: 'Nếu sưng đỏ lan rộng, sốt cao, đau tăng nhanh, hãy đến khám ngay. Thông tin chỉ mang tính tham khảo.')"
   }
 }`;
 
