@@ -47,12 +47,8 @@ export async function reportRoutes(
       const existingReport = await reportService.getReport(session_id);
       if (existingReport && existingReport.report_type === reportType) {
         logger.info(`Returning existing ${reportType} report for session ${session_id}`);
-        return reply.status(200).send({
-          session_id,
-          report_type: existingReport.report_type,
-          generated_at: new Date().toISOString(),
-          report: existingReport
-        });
+        // Chỉ trả về JSON (report_content là MedicalReport)
+        return reply.status(200).send(existingReport.report_content);
       }
 
       // Generate new report
@@ -63,12 +59,8 @@ export async function reportRoutes(
         reportType
       );
 
-      return reply.status(200).send({
-        session_id,
-        report_type: report.report_type,
-        generated_at: new Date().toISOString(),
-        report
-      });
+      // Chỉ trả về JSON (report_content là MedicalReport)
+      return reply.status(200).send(report.report_content);
     } catch (error) {
       logger.error({ error }, 'Error generating report');
       return reply.status(500).send({
@@ -78,86 +70,8 @@ export async function reportRoutes(
     }
   });
 
-  // Get report markdown only (for easy display)
-  fastify.get('/api/reports/:session_id/markdown', async (
-    request: FastifyRequest<{
-      Params: { session_id: string };
-    }>,
-    reply: FastifyReply
-  ) => {
-    try {
-      const { session_id } = request.params;
-
-      const report = await reportService.getReport(session_id);
-      if (!report) {
-        // Generate if doesn't exist
-        const { data: sessionData } = await supabaseService.getClient()
-          .from('conversation_sessions')
-          .select('user_id')
-          .eq('id', session_id)
-          .single();
-
-        if (!sessionData) {
-          return reply.status(404).send({
-            error: 'Session not found'
-          });
-        }
-
-        const newReport = await reportService.generateReport(session_id, sessionData.user_id);
-        return reply.status(200).send({
-          markdown: newReport.report_markdown
-        });
-      }
-
-      return reply.status(200).send({
-        markdown: report.report_markdown
-      });
-    } catch (error) {
-      logger.error({ error }, 'Error getting report markdown');
-      return reply.status(500).send({
-        error: 'Internal server error',
-        message: 'Failed to get report markdown'
-      });
-    }
-  });
-
-  // Get report JSON only
-  fastify.get('/api/reports/:session_id/json', async (
-    request: FastifyRequest<{
-      Params: { session_id: string };
-    }>,
-    reply: FastifyReply
-  ) => {
-    try {
-      const { session_id } = request.params;
-
-      const report = await reportService.getReport(session_id);
-      if (!report) {
-        const { data: sessionData } = await supabaseService.getClient()
-          .from('conversation_sessions')
-          .select('user_id')
-          .eq('id', session_id)
-          .single();
-
-        if (!sessionData) {
-          return reply.status(404).send({
-            error: 'Session not found'
-          });
-        }
-
-        const newReport = await reportService.generateReport(session_id, sessionData.user_id);
-        return reply.status(200).send(newReport.report_content);
-      }
-
-      return reply.status(200).send(report.report_content);
-    } catch (error) {
-      logger.error({ error }, 'Error getting report JSON');
-      return reply.status(500).send({
-        error: 'Internal server error',
-        message: 'Failed to get report JSON'
-      });
-    }
-  });
+  // Chỉ có 1 endpoint duy nhất trả về JSON (MedicalReport)
+  // Đã được xử lý ở endpoint chính ở trên
 
   logger.info('Report routes registered');
 }
