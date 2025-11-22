@@ -1,19 +1,27 @@
 /**
  * Interactive WebSocket Test Client
- * Tests connection and message flow
+ * Tests connection and message flow on HuggingFace Space or local server
+ * 
+ * Usage:
+ *   npx tsx test-websocket-interactive.js
+ *   WS_URL=wss://medagen-backend.hf.space/ws/chat API_URL=https://medagen-backend.hf.space/api/health-check npx tsx test-websocket-interactive.js
  */
 
 import WebSocket from 'ws';
 import * as readline from 'readline';
 
 const SESSION_ID = 'test-session-123';
-const WS_URL = `ws://localhost:8000/ws/chat?session=${SESSION_ID}`;
+const WS_URL = process.env.WS_URL || 'wss://medagen-backend.hf.space/ws/chat';
+const API_URL = process.env.API_URL || 'https://medagen-backend.hf.space/api/health-check';
+const fullWsUrl = `${WS_URL}?session=${SESSION_ID}`;
 
 console.log('🧪 WebSocket Interactive Test Client');
 console.log('====================================\n');
-console.log(`Connecting to: ${WS_URL}\n`);
+console.log(`📡 WebSocket URL: ${fullWsUrl}`);
+console.log(`🌐 API URL: ${API_URL}\n`);
+console.log(`Connecting to: ${fullWsUrl}\n`);
 
-const ws = new WebSocket(WS_URL);
+const ws = new WebSocket(fullWsUrl);
 
 ws.on('open', () => {
   console.log('✅ WebSocket connected successfully!\n');
@@ -72,7 +80,7 @@ rl.on('line', async (line) => {
     const fetch = await import('node-fetch').then(m => m.default);
 
     try {
-      const response = await fetch('http://localhost:8000/api/health-check', {
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

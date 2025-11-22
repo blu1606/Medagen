@@ -1,18 +1,24 @@
 /**
  * Simple WebSocket Test Client
- * Tests connection to ws://localhost:8000/ws/chat
+ * Tests WebSocket connection to HuggingFace Space or local server
+ * 
+ * Usage:
+ *   npx tsx test-websocket.js
+ *   WS_URL=wss://medagen-backend.hf.space/ws/chat npx tsx test-websocket.js
  */
 
 import WebSocket from 'ws';
 
 const SESSION_ID = 'test-session-123';
-const WS_URL = `ws://localhost:8000/ws/chat?session=${SESSION_ID}`;
+const WS_URL = process.env.WS_URL || 'wss://medagen-backend.hf.space/ws/chat';
+const API_URL = process.env.API_URL || 'https://medagen-backend.hf.space/api/health-check';
+const fullWsUrl = `${WS_URL}?session=${SESSION_ID}`;
 
 console.log('🧪 WebSocket Test Client');
 console.log('========================\n');
-console.log(`Connecting to: ${WS_URL}\n`);
+console.log(`Connecting to: ${fullWsUrl}\n`);
 
-const ws = new WebSocket(WS_URL);
+const ws = new WebSocket(fullWsUrl);
 
 ws.on('open', () => {
   console.log('✅ WebSocket connected successfully!\n');
@@ -58,8 +64,11 @@ process.on('SIGINT', () => {
 });
 
 console.log('💡 Tip: Open another terminal and send a POST request to:');
-console.log(`   curl -X POST http://localhost:8000/api/health-check \\`);
+console.log(`   curl -X POST ${API_URL} \\`);
 console.log(`     -H "Content-Type: application/json" \\`);
 console.log(`     -d '{"text":"eye pain","user_id":"anonymous","session_id":"${SESSION_ID}"}'`);
+console.log('');
+console.log(`📡 WebSocket URL: ${fullWsUrl}`);
+console.log(`🌐 API URL: ${API_URL}`);
 console.log('');
 console.log('Press Ctrl+C to exit\n');

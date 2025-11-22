@@ -233,7 +233,8 @@ export async function triageRoutes(
 
       // Add assistant response to conversation history
       try {
-        const assistantMessage = `Tôi đã phân tích triệu chứng của bạn. Mức độ: ${triageResult.triage_level}. ${triageResult.recommendation.action}`;
+        // Chỉ lấy recommendation.action, loại bỏ thông tin không cần thiết
+        const assistantMessage = triageResult.recommendation.action;
         await conversationService.addAssistantMessage(
           activeSessionId,
           user_id,

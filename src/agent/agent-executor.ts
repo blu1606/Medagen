@@ -2,7 +2,6 @@ import { GeminiLLM } from './gemini-llm.js';
 import { CVService } from '../services/cv.service.js';
 import { TriageRulesService } from '../services/triage-rules.service.js';
 import { RAGService } from '../services/rag.service.js';
-import { IntentClassifierService } from '../services/intent-classifier.service.js';
 import { KnowledgeBaseService } from '../services/knowledge-base.service.js';
 import { SupabaseService } from '../services/supabase.service.js';
 import { logger } from '../utils/logger.js';
@@ -14,7 +13,6 @@ export class MedagenAgent {
   private triageService: TriageRulesService;
   private ragService: RAGService;
   private knowledgeBase: KnowledgeBaseService;
-  private intentClassifier: IntentClassifierService;
   private initialized: boolean = false;
 
   constructor(supabaseService: SupabaseService) {
@@ -23,7 +21,6 @@ export class MedagenAgent {
     this.triageService = new TriageRulesService();
     this.ragService = new RAGService(supabaseService);
     this.knowledgeBase = new KnowledgeBaseService(supabaseService);
-    this.intentClassifier = new IntentClassifierService();
   }
 
   async initialize(): Promise<void> {
@@ -54,48 +51,21 @@ export class MedagenAgent {
     }
 
     try {
-      logger.info('Starting query processing with intent classification...');
+      logger.info('Starting query processing...');
+      logger.info(`User text: "${userText}"`);
+      logger.info(`Has image: ${!!imageUrl}`);
 
-      // Step 1: Classify intent (AI-Agent.md approach)
-      const intent = this.intentClassifier.classifyIntent(userText, !!imageUrl);
-      logger.info(`Intent classified as: ${intent.type} (confidence: ${intent.confidence})`);
-
-      // Step 2: Handle out-of-scope queries
-      if (intent.type === 'out_of_scope') {
-        return this.handleOutOfScope(userText);
-      }
-
-      // Step 3: Check if clarification is needed
-      if (intent.needsClarification && intent.suggestedQuestion) {
-        return this.handleNeedsClarification(userText, intent.suggestedQuestion);
-      }
-
-      // Step 4: Route to appropriate workflow based on intent
-      switch (intent.type) {
-        case 'triage':
-          // Original triage workflow
-          if (imageUrl) {
-            return await this.processTriageWithImage(userText, imageUrl, conversationContext);
-          } else {
-            return await this.processTriageTextOnly(userText, conversationContext);
-          }
-
-        case 'disease_info':
-          // Educational query about specific disease (AI-Agent.md Nhóm 1)
-          return await this.processDiseaseInfoQuery(userText, intent, conversationContext);
-
-        case 'symptom_inquiry':
-        case 'general_health':
-          // General health inquiry - provide educational info + suggest triage if needed
-          return await this.processGeneralHealthQuery(userText, conversationContext);
-
-        default:
-          // Fallback to triage
-          if (imageUrl) {
-            return await this.processTriageWithImage(userText, imageUrl, conversationContext);
-          } else {
-            return await this.processTriageTextOnly(userText, conversationContext);
-          }
+      // Agent tự quyết định workflow dựa trên input
+      // - Có image: luôn gọi CV + RAG + Triage Rules
+      // - Không có image: Phân tích user text để quyết định gọi tools nào
+      
+      if (imageUrl) {
+        // Có hình ảnh: luôn xử lý như triage với CV
+        return await this.processTriageWithImage(userText, imageUrl, conversationContext);
+      } else {
+        // Không có hình ảnh: Agent tự quyết định dựa trên user text
+        // Sử dụng LLM để phân tích và quyết định workflow
+        return await this.processTriageTextOnly(userText, conversationContext);
       }
     } catch (error) {
       logger.error({ error }, 'Error processing query');
@@ -150,54 +120,53 @@ export class MedagenAgent {
   }
 
   /**
-   * Process educational query about disease (AI-Agent.md Nhóm 1)
+   * Process educational query about disease
+   * Agent tự quyết định khi nào cần gọi knowledge base vs RAG
    */
   private async processDiseaseInfoQuery(
     userText: string,
-    intent: any,
     conversationContext?: string
   ): Promise<TriageResult> {
     try {
       logger.info('='.repeat(80));
       logger.info('[AGENT WORKFLOW] processDiseaseInfoQuery STARTED');
       logger.info(`[AGENT] User text: "${userText}"`);
-      logger.info(`[AGENT] Intent: ${JSON.stringify(intent, null, 2)}`);
 
+      // Agent tự quyết định: thử knowledge base trước, nếu không có thì dùng RAG
       let guidelines: any[] = [];
 
-      // Step 1: Try structured knowledge base first (SQL filtering)
-      if (intent.entities.disease) {
-        logger.info(`[AGENT] Step 1: Searching structured knowledge for disease: ${intent.entities.disease}`);
-        const disease = await this.knowledgeBase.findDisease(intent.entities.disease);
-        
-        if (disease) {
-          logger.info(`[AGENT] Found disease: ${disease.name} (ID: ${disease.id})`);
+      // Step 1: Thử tìm disease name từ user text và query knowledge base
+      logger.info('[AGENT] Step 1: Attempting structured knowledge search...');
+      try {
+        // Extract potential disease name from query (simple heuristic)
+        const diseaseKeywords = userText.match(/(?:bệnh|về)\s+([^?.,!]+)/i);
+        if (diseaseKeywords && diseaseKeywords[1]) {
+          const potentialDisease = diseaseKeywords[1].trim();
+          logger.info(`[AGENT] Potential disease name: ${potentialDisease}`);
           
-          // Query with disease filter
-          logger.info(`[AGENT] Calling MCP CSDL - queryStructuredKnowledge...`);
-          const structuredResults = await this.knowledgeBase.queryStructuredKnowledge({
-            disease: disease.name,
-            infoDomain: intent.entities.info_domain,
-            query: userText
-          });
-
-          if (structuredResults.length > 0) {
-            guidelines = structuredResults;
-            logger.info(`[AGENT] Retrieved ${guidelines.length} structured knowledge chunks from CSDL`);
-          } else {
-            logger.info(`[AGENT] CSDL returned 0 results, will try RAG fallback`);
+          const disease = await this.knowledgeBase.findDisease(potentialDisease);
+          if (disease) {
+            logger.info(`[AGENT] Found disease: ${disease.name} (ID: ${disease.id})`);
+            const structuredResults = await this.knowledgeBase.queryStructuredKnowledge({
+              disease: disease.name,
+              query: userText
+            });
+            if (structuredResults.length > 0) {
+              guidelines = structuredResults;
+              logger.info(`[AGENT] Retrieved ${guidelines.length} structured knowledge chunks from CSDL`);
+            }
           }
-        } else {
-          logger.info(`[AGENT] Disease not found in CSDL, will try RAG fallback`);
         }
+      } catch (error) {
+        logger.warn({ error }, '[AGENT] Knowledge base search failed, will use RAG');
       }
 
       // Step 2: Fallback to RAG if no structured results
       if (guidelines.length === 0) {
-        logger.info('[AGENT] Step 2: Using RAG fallback for semantic search...');
+        logger.info('[AGENT] Step 2: Using RAG for semantic search...');
         const guidelineQuery = {
           symptoms: userText,
-          suspected_conditions: intent.entities.disease ? [intent.entities.disease] : [],
+          suspected_conditions: [],
           triage_level: 'routine'
         };
 
@@ -214,9 +183,6 @@ export class MedagenAgent {
 User hỏi: ${userText}
 
 ${conversationContext ? `Context trước đó: ${conversationContext}` : ''}
-
-${intent.entities.disease ? `Bệnh được hỏi: ${intent.entities.disease}` : ''}
-${intent.entities.info_domain ? `Miền thông tin: ${intent.entities.info_domain}` : ''}
 
 Thông tin từ hướng dẫn BYT:
 ${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
@@ -388,14 +354,35 @@ JSON response (ONLY JSON):
 
   /**
    * Process text-only triage
+   * Agent tự quyết định: nếu là câu hỏi giáo dục về bệnh thì dùng knowledge base/RAG
+   * Nếu là triệu chứng cá nhân thì dùng triage rules + RAG
    */
   private async processTriageTextOnly(
     userText: string,
     conversationContext?: string
   ): Promise<TriageResult> {
     try {
-      logger.info('Processing text-only triage...');
+      logger.info('Processing text-only query...');
 
+      // Phân tích user text để quyết định workflow
+      // Nếu có từ khóa "là gì", "như thế nào", "về" → câu hỏi giáo dục
+      const lowerText = userText.toLowerCase();
+      const isEducationalQuery = 
+        lowerText.includes('là gì') || 
+        lowerText.includes('như thế nào') || 
+        lowerText.includes('về') ||
+        lowerText.includes('giải thích') ||
+        lowerText.includes('cho tôi biết');
+
+      if (isEducationalQuery) {
+        // Câu hỏi giáo dục: thử knowledge base trước, sau đó RAG
+        logger.info('[AGENT] Detected educational query, using knowledge base/RAG workflow');
+        return await this.processDiseaseInfoQuery(userText, conversationContext);
+      }
+
+      // Triệu chứng cá nhân: dùng triage workflow
+      logger.info('[AGENT] Detected symptom query, using triage workflow');
+      
       // Step 1: Apply triage rules
       const triageInput = {
         symptoms: {
@@ -406,7 +393,7 @@ JSON response (ONLY JSON):
 
       const triageResult = this.triageService.evaluateSymptoms(triageInput);
       
-      // Step 2: Get guidelines
+      // Step 2: Get guidelines from RAG
       const guidelineInput = {
         symptoms: userText,
         suspected_conditions: [],
