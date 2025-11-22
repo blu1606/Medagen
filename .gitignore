@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.env
+.env.local
+*.log
+.DS_Store
+coverage/
+.vscode/
+.idea/
+
+# Document
+QUICKSTART.md
+SETUP.md
+TESTING.md
+PROJECT_STRUCTURE.md
+IMPLEMENTATION_SUMMARY.md
+BE_Document.md
+TEST_RESULTS.md
+
+# Test
+test-endpoints.sh
+
+# PDF files (not allowed on HuggingFace)
+*.pdf
+data/*.pdf

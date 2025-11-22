@@ -1,8 +1,8 @@
 ---
-title: Backend
-emoji: 📈
-colorFrom: gray
-colorTo: red
+title: Medagen BE
+emoji: 🌖
+colorFrom: pink
+colorTo: pink
 sdk: docker
 pinned: false
 ---
