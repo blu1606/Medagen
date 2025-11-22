@@ -35,7 +35,7 @@ export function createHospitalTool(mapsService: MapsService): DynamicTool {
     description:
       'Finds the most appropriate medical facility based on user coordinates and medical condition. ' +
       'TRIGGERS: ' +
-      '1. MANDATORY: This tool must be called if the user is in a critical/emergency state OR explicitly requests hospitalization. ' +
+      '1. MANDATORY: This tool must be called if the user is in a critical/emergency state OR explicitly requests hospitalization OR the user is asking for a hospital or want go to the doctor.' +
       '2. REFERRAL: This tool is called when a medical condition is identified with high confidence to suggest a suitable facility. ' +
       'INPUT: A JSON string with "location" (object with "lat" and "lng" as numbers) and optionally "condition" (string - medical condition/disease name). ' +
       'RETURNS: Best matching hospital (considering both specialty match and distance), plus top 3 nearby hospitals for reference.',
