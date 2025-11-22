@@ -184,38 +184,45 @@ ${formattedGuidelines}
 
 YÊU CẦU VỀ PHONG CÁCH VIẾT:
 1. VIẾT HOÀN TOÀN BẰNG TIẾNG VIỆT - không được dùng tiếng Anh trong response
-2. Viết TỰ NHIÊN, DỄ HIỂU như đang trò chuyện với người dùng
-3. CÓ THỂ biện luận, so sánh, giải thích "tại sao", "như thế nào" một cách tự do
-4. Sử dụng markdown để format (tiêu đề, danh sách, nhấn mạnh) cho dễ đọc
-5. PHẢI sử dụng thông tin từ "Hướng dẫn y tế từ Bộ Y Tế" ở trên - KHÔNG được tự ý tạo thông tin
-6. KHÔNG được tự thêm câu mở đầu kiểu "Based on...", "I've assessed..." hoặc "This is..."
-7. Đây là câu hỏi giáo dục, KHÔNG PHẢI chẩn đoán cá nhân
-8. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, không thay thế bác sĩ"
-9. KHÔNG kê đơn, KHÔNG khuyến nghị liều thuốc cụ thể
+2. Viết NGẮN GỌN, CÔ ĐỌNG - tối đa 250-350 từ, tập trung vào thông tin quan trọng nhất
+3. Viết TỰ NHIÊN, DỄ HIỂU như đang trò chuyện với người dùng
+4. CÓ THỂ biện luận, giải thích nhưng NGẮN GỌN, không lan man
+5. Sử dụng markdown để format (tiêu đề, danh sách) cho dễ đọc
+6. PHẢI sử dụng thông tin từ "Hướng dẫn y tế từ Bộ Y Tế" ở trên - KHÔNG được tự ý tạo thông tin
+7. KHÔNG được tự thêm câu mở đầu kiểu "Based on...", "I've assessed..." hoặc "This is..."
+8. Đây là câu hỏi giáo dục, KHÔNG PHẢI chẩn đoán cá nhân
+9. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, không thay thế bác sĩ"
+10. KHÔNG kê đơn, KHÔNG khuyến nghị liều thuốc cụ thể
 
-Hãy tạo một phản hồi markdown TỰ NHIÊN, có thể bao gồm:
-- Giải thích về bệnh/triệu chứng dựa trên guidelines (định nghĩa, nguyên nhân, triệu chứng)
-- Giải thích nguyên tắc điều trị từ guidelines (KHÔNG kê đơn cụ thể)
-- Hướng dẫn về phòng ngừa và chăm sóc dựa trên guidelines
-- So sánh với các bệnh tương tự nếu có
-- Disclaimer về tính tham khảo
+QUAN TRỌNG VỀ ĐỘ DÀI:
+- Tối đa 250-350 từ (khoảng 1-2 đoạn văn ngắn)
+- Tập trung vào: định nghĩa ngắn gọn, nguyên tắc điều trị chính, phòng ngừa
+- KHÔNG lặp lại thông tin, KHÔNG giải thích quá chi tiết
+- Ưu tiên thông tin thực tế, dễ hiểu
 
-Ví dụ format markdown (KHÔNG bắt buộc phải theo đúng format này, chỉ là gợi ý):
+Hãy tạo một phản hồi markdown NGẮN GỌN, cô đọng, bao gồm:
+- Định nghĩa ngắn gọn về bệnh/triệu chứng (2-3 câu)
+- Nguyên tắc điều trị chính từ guidelines (3-4 điểm ngắn gọn)
+- Hướng dẫn phòng ngừa và chăm sóc (2-3 điểm)
+- Disclaimer ngắn gọn
+
+Ví dụ format markdown NGẮN GỌN:
 ## 📚 Về bệnh [tên bệnh]
 
-[Giải thích định nghĩa, nguyên nhân, triệu chứng dựa trên guidelines]
+[Định nghĩa ngắn gọn 2-3 câu từ guidelines]
 
 ## 💊 Nguyên tắc điều trị
 
-[Giải thích nguyên tắc điều trị từ guidelines, KHÔNG kê đơn cụ thể]
+- [Điểm 1 - ngắn gọn]
+- [Điểm 2 - ngắn gọn]
+- [Điểm 3 - ngắn gọn]
 
-## 💡 Hướng dẫn phòng ngừa và chăm sóc
+## 💡 Phòng ngừa và chăm sóc
 
-[Thông tin CỤ THỂ từ guidelines về phòng ngừa và chăm sóc]
+- [Điểm 1 - ngắn gọn]
+- [Điểm 2 - ngắn gọn]
 
----
-
-**Lưu ý quan trọng:** Thông tin này chỉ mang tính tham khảo giáo dục, không thay thế bác sĩ. Nếu bạn đang có triệu chứng, hãy đến gặp bác sĩ để được khám và chẩn đoán chính xác.`;
+**Lưu ý:** Thông tin chỉ mang tính tham khảo giáo dục, không thay thế bác sĩ.`;
 
       // Log prompt and input data before sending to LLM
       logger.info('='.repeat(80));
@@ -534,42 +541,42 @@ ${formattedGuidelines}
 
 YÊU CẦU VỀ PHONG CÁCH VIẾT:
 1. VIẾT HOÀN TOÀN BẰNG TIẾNG VIỆT - không được dùng tiếng Anh trong response
-2. Viết TỰ NHIÊN, DỄ HIỂU như đang trò chuyện với bệnh nhân
-3. CÓ THỂ biện luận, so sánh, giải thích "tại sao", "như thế nào" một cách tự do
-4. Sử dụng markdown để format (tiêu đề, danh sách, nhấn mạnh) cho dễ đọc
-5. PHẢI sử dụng thông tin từ "Hướng dẫn y tế từ Bộ Y Tế" ở trên - KHÔNG được tự ý tạo thông tin
-6. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác"
-${cvResult.top_conditions.length === 0 ? '7. Phân tích hình ảnh không đủ tin cậy, chỉ dựa vào mô tả triệu chứng và guidelines.' : ''}
+2. Viết NGẮN GỌN, CÔ ĐỌNG - tối đa 300-400 từ, tập trung vào thông tin quan trọng nhất
+3. Viết TỰ NHIÊN, DỄ HIỂU như đang trò chuyện với bệnh nhân
+4. CÓ THỂ biện luận, giải thích "tại sao" nhưng NGẮN GỌN, không lan man
+5. Sử dụng markdown để format (tiêu đề, danh sách) cho dễ đọc
+6. PHẢI sử dụng thông tin từ "Hướng dẫn y tế từ Bộ Y Tế" ở trên - KHÔNG được tự ý tạo thông tin
+7. Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác"
+${cvResult.top_conditions.length === 0 ? '8. Phân tích hình ảnh không đủ tin cậy, chỉ dựa vào mô tả triệu chứng và guidelines.' : ''}
 
-Hãy tạo một phản hồi markdown TỰ NHIÊN, có thể bao gồm:
-- Giải thích về tình trạng dựa trên triệu chứng và hình ảnh (nếu có)
-- So sánh các khả năng nếu có nhiều suspected conditions
-- Giải thích "tại sao" đưa ra kết luận này (explainability)
-- Hướng dẫn cụ thể về chăm sóc tại nhà dựa trên guidelines
-- Lời khuyên về hành động tiếp theo
-- Dấu hiệu cảnh báo cần đi khám ngay
-- Disclaimer về tính tham khảo
+QUAN TRỌNG VỀ ĐỘ DÀI:
+- Tối đa 300-400 từ (khoảng 1-2 đoạn văn ngắn)
+- Tập trung vào: tình trạng có thể là gì, hướng dẫn chăm sóc ngắn gọn, khi nào cần đi khám
+- KHÔNG lặp lại thông tin, KHÔNG giải thích quá chi tiết
+- Ưu tiên thông tin thực tế, hành động cụ thể
 
-Ví dụ format markdown (KHÔNG bắt buộc phải theo đúng format này, chỉ là gợi ý):
-## 📋 Tóm tắt tình trạng
+Hãy tạo một phản hồi markdown NGẮN GỌN, cô đọng, bao gồm:
+- Tóm tắt ngắn về tình trạng có thể là gì (1-2 câu)
+- Hướng dẫn chăm sóc tại nhà ngắn gọn từ guidelines (3-4 điểm chính)
+- Khi nào cần đi khám ngay (1-2 câu)
+- Disclaimer ngắn gọn
 
-Dựa trên hình ảnh và mô tả triệu chứng của bạn...
+Ví dụ format markdown NGẮN GỌN:
+## 📋 Tình trạng
 
-## 🔍 Phân tích
+Dựa trên triệu chứng và hình ảnh, có khả năng bạn đang gặp [tên bệnh]. [1-2 câu giải thích ngắn gọn].
 
-[Giải thích, biện luận, so sánh tự do dựa trên guidelines]
+## 💡 Chăm sóc tại nhà
 
-## 💡 Hướng dẫn chăm sóc tại nhà
+- [Điểm 1 từ guidelines - ngắn gọn]
+- [Điểm 2 từ guidelines - ngắn gọn]
+- [Điểm 3 từ guidelines - ngắn gọn]
 
-[Các lời khuyên CỤ THỂ từ guidelines về phương pháp điều trị tại chỗ, lưu ý về thuốc, cách chăm sóc]
+## ⚠️ Khi nào cần đi khám
 
-## ⚠️ Khi nào cần đi khám ngay
+[1-2 câu về dấu hiệu cảnh báo]
 
-[Dấu hiệu cảnh báo + disclaimer]
-
----
-
-**Lưu ý quan trọng:** Thông tin này chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác.`;
+**Lưu ý:** Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác.`;
 
     // Log prompt and input data before sending to LLM
     logger.info('='.repeat(80));
