@@ -5,117 +5,123 @@ import type { CVResult } from '../types/index.js';
 
 export class CVService {
   /**
-   * Parse markdown response from CV API to extract predictions
-   */
-  private parseMarkdownResponse(markdown: string): CVResult {
-    try {
-      const lines = markdown.split('\n');
-      const top_conditions: Array<{ name: string; prob: number }> = [];
-
-      // Find "Top Predictions:" section
-      const predictionStartIndex = lines.findIndex(line => line.includes('**Top Predictions:**'));
-      
-      if (predictionStartIndex === -1) {
-        logger.warn('Could not find Top Predictions in response');
-        return { top_conditions: [] };
-      }
-
-      // Parse predictions (format: **1.** Condition Name - **98.7%**)
-      for (let i = predictionStartIndex + 1; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (!line || !line.match(/^\*\*\d+\.\*\*/)) break;
-
-        // Extract condition name and probability
-        // Format: **1.** Acne and Rosacea Photos - **98.7%**
-        const match = line.match(/\*\*\d+\.\*\*\s+(.+?)\s+-\s+\*\*(.+?)%\*\*/);
-        if (match) {
-          const name = match[1].trim();
-          const prob = parseFloat(match[2]) / 100; // Convert percentage to decimal
-          top_conditions.push({ name, prob });
-        }
-      }
-
-      logger.info(`Parsed ${top_conditions.length} predictions from CV response`);
-      return { top_conditions };
-    } catch (error) {
-      logger.error('Error parsing markdown response:', error);
-      return { top_conditions: [] };
-    }
-  }
-
-  /**
-   * Call the unified CV API endpoint
+   * Call the unified CV API endpoint using Gradio Client API
+   * Updated to use /handle_prediction endpoint which returns JSON
    */
   private async callCVAPI(imageUrl: string, modelType: 'dermnet' | 'teeth' | 'nail', topK: number = 3): Promise<CVResult> {
     try {
+      logger.info('='.repeat(80));
+      logger.info('[MCP CV] INPUT:');
+      logger.info(`  Image URL: ${imageUrl}`);
+      logger.info(`  Model: ${modelType}`);
+      logger.info(`  Top K: ${topK}`);
+
       if (!config.cvModels.endpoint) {
-        logger.warn('CV_ENDPOINT not configured');
+        logger.warn('[MCP CV] CV_ENDPOINT not configured');
+        logger.info('='.repeat(80));
         return { top_conditions: [] };
       }
 
-      const endpoint = `${config.cvModels.endpoint.replace(/\/$/, '')}/run/predict_image`;
+      // Use Gradio API format: /run/handle_prediction (synchronous)
+      const endpoint = `${config.cvModels.endpoint.replace(/\/$/, '')}/run/handle_prediction`;
       
-      logger.info(`Calling CV API: ${endpoint} with model: ${modelType}`);
+      logger.info(`[MCP CV] Calling CV API: ${endpoint}`);
 
+      // Call synchronous API
       const response = await axios.post(
         endpoint,
         {
           data: [
-            { path: imageUrl },
-            modelType,
-            topK
+            imageUrl,      // image_url (string)
+            modelType,     // select_ai_model
+            topK           // number_of_predictions
           ]
         },
         {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 30000
+          timeout: 30000 // 30 seconds for CV processing
         }
       );
 
-      logger.info('CV API response received');
+      logger.info('[MCP CV] Response received');
 
       // Parse response
-      if (response.data && Array.isArray(response.data.data) && response.data.data.length > 0) {
-        const markdownResult = response.data.data[0];
-        return this.parseMarkdownResponse(markdownResult);
+      if (response.data && response.data.data && response.data.data.length > 0) {
+        const jsonResultString = response.data.data[0];
+        
+        // Parse JSON response
+        const jsonResult = typeof jsonResultString === 'string' 
+          ? JSON.parse(jsonResultString) 
+          : jsonResultString;
+
+        logger.info('[MCP CV] OUTPUT:');
+        logger.info(`  Success: ${jsonResult.success}`);
+        logger.info(`  Model: ${jsonResult.model || 'N/A'}`);
+        
+        if (jsonResult.success && jsonResult.predictions) {
+          const top_conditions = jsonResult.predictions.map((pred: any) => ({
+            name: pred.class,
+            prob: pred.confidence
+          }));
+
+          logger.info(`  Predictions: ${top_conditions.length}`);
+          top_conditions.forEach((cond: any, idx: number) => {
+            logger.info(`    ${idx + 1}. ${cond.name}: ${(cond.prob * 100).toFixed(1)}%`);
+          });
+          logger.info('='.repeat(80));
+
+          return { top_conditions };
+        } else {
+          logger.error(`[MCP CV] ERROR: ${jsonResult.error || 'Unknown error'}`);
+          logger.info('='.repeat(80));
+          return { top_conditions: [] };
+        }
       }
 
-      logger.warn('CV API returned unexpected response format');
+      logger.error('[MCP CV] Unexpected response format');
+      logger.info('='.repeat(80));
       return { top_conditions: [] };
-    } catch (error) {
-      logger.error('CV API error:', error);
+
+    } catch (error: any) {
+      logger.error('[MCP CV] ERROR:');
+      logger.error(`  Message: ${error.message}`);
+      if (error.response) {
+        logger.error(`  Status: ${error.response.status}`);
+        logger.error(`  Data: ${JSON.stringify(error.response.data)}`);
+      }
+      logger.info('='.repeat(80));
       return { top_conditions: [] };
     }
   }
 
   async callDermCV(imageUrl: string): Promise<CVResult> {
     try {
-      logger.info('Calling Dermatology CV model...');
+      logger.info('[MCP CV] Calling Dermatology CV model...');
       return await this.callCVAPI(imageUrl, 'dermnet', 3);
     } catch (error) {
-      logger.error('Derm CV error:', error);
+      logger.error('[MCP CV] Derm CV error:', error);
       return { top_conditions: [] };
     }
   }
 
   async callEyeCV(imageUrl: string): Promise<CVResult> {
     try {
-      logger.info('Calling Eye CV model...');
+      logger.info('[MCP CV] Calling Eye CV model...');
       // Eye conditions are also analyzed by dermnet model
       return await this.callCVAPI(imageUrl, 'dermnet', 3);
     } catch (error) {
-      logger.error('Eye CV error:', error);
+      logger.error('[MCP CV] Eye CV error:', error);
       return { top_conditions: [] };
     }
   }
 
   async callWoundCV(imageUrl: string): Promise<CVResult> {
     try {
-      logger.info('Calling Wound CV model...');
+      logger.info('[MCP CV] Calling Wound CV model...');
       // Wound conditions are also analyzed by dermnet model
       return await this.callCVAPI(imageUrl, 'dermnet', 3);
     } catch (error) {
-      logger.error('Wound CV error:', error);
+      logger.error('[MCP CV] Wound CV error:', error);
       return { top_conditions: [] };
     }
   }

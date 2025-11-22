@@ -3,21 +3,23 @@ import axios from 'axios';
 const BASE_URL = 'http://localhost:7860/api/health-check';
 // npx tsx test_api_usecases.js
 const useCases = [
-  // {
-  //   id: 1,
-  //   name: 'MCP RAG - Triệu chứng da liễu với suspected condition',
-  //   expectedMCP: 'RAG',
-  //   payload: {
-  //     text: 'Da nổi mẩn đỏ ngứa, nghi ngờ viêm da cơ địa',
-  //     user_id: 'test_user_1'
-  //   }
-  // },
+  {
+    id: 1,
+    name: 'MCP CV - Da liễu với hình ảnh',
+    expectedMCP: 'CV',
+    payload: {
+      text: 'Da tay nổi mẩn đỏ ngứa',
+      image_url: 'https://www.rosacea.org/sites/default/files/images/rosacea_subtype2.jpg',
+      user_id: 'test_user_1'
+    }
+  },
   {
     id: 2,
-    name: 'MCP RAG - Triệu chứng mụn trứng cá',
-    expectedMCP: 'BOTH',
+    name: 'MCP CV + RAG - Triệu chứng với hình ảnh',
+    expectedMCP: 'CV+RAG',
     payload: {
       text: 'Mặt nổi nhiều mụn trứng cá, đỏ và sưng',
+      image_url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ae/Atopic_dermatitis.jpg/800px-Atopic_dermatitis.jpg',
       user_id: 'test_user_2'
     }
   },
@@ -98,9 +100,8 @@ const useCases = [
 let lastSessionId = null;
 
 async function runTests() {
-  console.log('🚀 Starting MCP RAG & CSDL API Tests...\n');
+  console.log('🚀 Starting MCP CV, RAG & CSDL API Tests...\n');
   console.log(`Testing endpoint: ${BASE_URL}\n`);
-  console.log('⚠️  CV MCP is temporarily disabled - focusing on RAG and CSDL\n');
   console.log('='.repeat(80));
   
   const results = [];
@@ -131,7 +132,7 @@ async function runTests() {
         lastSessionId = response.data.session_id;
       }
 
-      // Check if RAG or CSDL was used by examining response content
+      // Check if RAG, CSDL, or CV was used by examining response content
       const responseText = JSON.stringify(response.data).toLowerCase();
       const hasRAGContent = responseText.includes('guideline') || 
                            responseText.includes('hướng dẫn') ||
@@ -146,6 +147,9 @@ async function runTests() {
                           responseText.includes('biến chứng') ||
                           responseText.includes('tiên lượng') ||
                           response.data.suspected_conditions?.length > 0;
+      
+      const hasCVContent = response.data.cv_findings?.model_used && 
+                          response.data.cv_findings.model_used !== 'none';
 
       const result = {
         id: useCase.id,
@@ -161,6 +165,8 @@ async function runTests() {
         sessionId: response.data.session_id || null,
         ragDetected: hasRAGContent,
         csdlDetected: hasCSDLContent,
+        cvDetected: hasCVContent,
+        cvModel: response.data.cv_findings?.model_used || 'none',
         responseLength: JSON.stringify(response.data).length
       };
 
@@ -180,6 +186,15 @@ async function runTests() {
       }
       
       // MCP-specific validations
+      if (useCase.expectedMCP === 'CV' && !result.cvDetected) {
+        validations.push('Expected CV but not detected in response');
+      }
+      
+      if (useCase.expectedMCP === 'CV+RAG') {
+        if (!result.cvDetected) validations.push('Expected CV but not detected');
+        if (!result.ragDetected) validations.push('Expected RAG but not detected');
+      }
+      
       if (useCase.expectedMCP === 'RAG' && !result.ragDetected) {
         validations.push('Expected RAG but not detected in response');
       }
@@ -216,6 +231,7 @@ async function runTests() {
       // Print result
       console.log(`✅ Status: ${response.status} (${duration}ms)`);
       console.log(`   Expected MCP: ${result.expectedMCP}`);
+      console.log(`   CV Detected: ${result.cvDetected ? '✅' : '❌'} (${result.cvModel})`);
       console.log(`   RAG Detected: ${result.ragDetected ? '✅' : '❌'}`);
       console.log(`   CSDL Detected: ${result.csdlDetected ? '✅' : '❌'}`);
       console.log(`   Triage Level: ${result.triageLevel}`);
