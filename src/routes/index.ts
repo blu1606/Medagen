@@ -7,6 +7,7 @@ import { ragRoutes } from './rag.route.js';
 import { mapsRoutes } from './maps.route.js';
 import { sessionsRoutes } from './sessions.route.js';
 import { conversationRoutes } from './conversation.route.js';
+import { websocketRoutes } from './websocket.route.js';
 import { MedagenAgent } from '../agent/agent-executor.js';
 import { SupabaseService } from '../services/supabase.service.js';
 import { MapsService } from '../services/maps.service.js';
@@ -19,6 +20,9 @@ export async function registerRoutes(
 ) {
   // Register health routes
   await healthRoutes(fastify);
+
+  // Register WebSocket routes
+  await websocketRoutes(fastify);
 
   // Register triage routes
   await triageRoutes(fastify, agent, supabaseService, mapsService);

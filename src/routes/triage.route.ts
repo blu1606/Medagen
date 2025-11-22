@@ -129,6 +129,10 @@ export async function triageRoutes(
                 address: { type: 'string' },
                 rating: { type: 'number' }
               }
+            },
+            session_id: {
+              type: 'string',
+              description: 'Session ID for conversation tracking'
             }
           }
         },
@@ -219,12 +223,13 @@ export async function triageRoutes(
       // Add user message to history
       await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
 
-      // Process triage with agent (pass conversation context separately)
+      // Process triage with agent (pass conversation context and session ID for WebSocket streaming)
       const triageResult = await agent.processTriage(
-        normalizedText || 'Da tôi bị gì thế này', 
-        normalizedImageUrl, 
+        normalizedText || 'Da tôi bị gì thế này',
+        normalizedImageUrl,
         user_id,
-        conversationContext // Pass context separately for better agent handling
+        conversationContext, // Pass context separately for better agent handling
+        activeSessionId // Pass session ID for WebSocket streaming
       );
 
       // Add assistant response to conversation history

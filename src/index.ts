@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { config, validateConfig } from './utils/config.js';
@@ -9,6 +10,7 @@ import { MedagenAgent } from './agent/agent-executor.js';
 import { SupabaseService } from './services/supabase.service.js';
 import { MapsService } from './services/maps.service.js';
 import { registerRoutes } from './routes/index.js';
+import { wsConnectionManager } from './services/websocket.service.js';
 
 async function startServer() {
   try {
@@ -28,6 +30,17 @@ async function startServer() {
     await fastify.register(cors, {
       origin: true, // Allow all origins (adjust for production)
       credentials: true
+    });
+
+    // Register WebSocket
+    await fastify.register(websocket, {
+      options: {
+        maxPayload: 10 * 1024, // 10KB max message size
+        verifyClient: (info, callback) => {
+          // Optional: Add custom verification logic here
+          callback(true);
+        }
+      }
     });
 
     // Register Swagger
@@ -97,6 +110,7 @@ async function startServer() {
     logger.info(`🚀 Medagen Backend is running on http://${host}:${port}`);
     logger.info(`📊 Health check: http://${host}:${port}/health`);
     logger.info(`🏥 Triage endpoint: http://${host}:${port}/api/health-check`);
+    logger.info(`🔌 WebSocket endpoint: ws://${host}:${port}/ws/chat`);
     logger.info(`📚 Swagger docs: http://${host}:${port}/docs`);
   } catch (error) {
     logger.error(error, 'Failed to start server');
@@ -107,11 +121,13 @@ async function startServer() {
 // Handle graceful shutdown
 process.on('SIGINT', () => {
   logger.info('Received SIGINT, shutting down gracefully...');
+  wsConnectionManager.destroy();
   process.exit(0);
 });
 
 process.on('SIGTERM', () => {
   logger.info('Received SIGTERM, shutting down gracefully...');
+  wsConnectionManager.destroy();
   process.exit(0);
 });
 

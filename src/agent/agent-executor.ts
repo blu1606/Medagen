@@ -5,8 +5,11 @@ import { RAGService } from '../services/rag.service.js';
 import { IntentClassifierService } from '../services/intent-classifier.service.js';
 import { KnowledgeBaseService } from '../services/knowledge-base.service.js';
 import { SupabaseService } from '../services/supabase.service.js';
+import { wsConnectionManager } from '../services/websocket.service.js';
 import { logger } from '../utils/logger.js';
 import type { TriageResult } from '../types/index.js';
+import type { ThoughtMessage, ActionStartMessage, ActionCompleteMessage } from '../types/websocket.js';
+import { TOOL_DISPLAY_NAMES } from '../types/websocket.js';
 
 export class MedagenAgent {
   private llm: GeminiLLM;
@@ -16,6 +19,7 @@ export class MedagenAgent {
   private knowledgeBase: KnowledgeBaseService;
   private intentClassifier: IntentClassifierService;
   private initialized: boolean = false;
+  private currentSessionId?: string; // Track current session for WebSocket streaming
 
   constructor(supabaseService: SupabaseService) {
     this.llm = new GeminiLLM();
@@ -43,12 +47,72 @@ export class MedagenAgent {
     }
   }
 
+  /**
+   * Set session ID for WebSocket streaming
+   */
+  setSessionId(sessionId?: string): void {
+    this.currentSessionId = sessionId;
+  }
+
+  /**
+   * Helper: Send thought message via WebSocket
+   */
+  private async sendThought(content: string, variant: 'initial' | 'intermediate' | 'final' = 'intermediate'): Promise<void> {
+    if (!this.currentSessionId) return;
+
+    const message: ThoughtMessage = {
+      type: 'thought',
+      content,
+      timestamp: new Date().toISOString(),
+      variant,
+    };
+
+    await wsConnectionManager.sendToSession(this.currentSessionId, message);
+  }
+
+  /**
+   * Helper: Send action start message via WebSocket
+   */
+  private async sendActionStart(toolName: string): Promise<void> {
+    if (!this.currentSessionId) return;
+
+    const message: ActionStartMessage = {
+      type: 'action_start',
+      tool_name: toolName,
+      tool_display_name: TOOL_DISPLAY_NAMES[toolName] || toolName,
+      timestamp: new Date().toISOString(),
+    };
+
+    await wsConnectionManager.sendToSession(this.currentSessionId, message);
+  }
+
+  /**
+   * Helper: Send action complete message via WebSocket
+   */
+  private async sendActionComplete(toolName: string, results: any, duration: number = 0): Promise<void> {
+    if (!this.currentSessionId) return;
+
+    const message: ActionCompleteMessage = {
+      type: 'action_complete',
+      tool_name: toolName,
+      duration_ms: duration,
+      results,
+      timestamp: new Date().toISOString(),
+    };
+
+    await wsConnectionManager.sendToSession(this.currentSessionId, message);
+  }
+
   async processTriage(
     userText: string,
     imageUrl?: string,
     _userId?: string,
-    conversationContext?: string
+    conversationContext?: string,
+    sessionId?: string
   ): Promise<TriageResult> {
+    // Set session ID for WebSocket streaming
+    this.setSessionId(sessionId);
+
     if (!this.initialized) {
       await this.initialize();
     }
@@ -160,16 +224,27 @@ export class MedagenAgent {
     try {
       logger.info('Processing disease info query...');
 
+      // WebSocket: Send initial thought
+      await this.sendThought(
+        `Analyzing query about "${userText}". I'll search for relevant medical information.`,
+        'initial'
+      );
+
       let guidelines: any[] = [];
 
       // Step 1: Try structured knowledge base first (SQL filtering)
       if (intent.entities.disease) {
         logger.info(`Searching structured knowledge for disease: ${intent.entities.disease}`);
+
+        // WebSocket: Send action start
+        const startTime = Date.now();
+        await this.sendActionStart('guideline_retrieval');
+
         const disease = await this.knowledgeBase.findDisease(intent.entities.disease);
-        
+
         if (disease) {
           logger.info(`Found disease: ${disease.name} (ID: ${disease.id})`);
-          
+
           // Query with disease filter
           const structuredResults = await this.knowledgeBase.queryStructuredKnowledge({
             disease: disease.name,
@@ -180,6 +255,18 @@ export class MedagenAgent {
           if (structuredResults.length > 0) {
             guidelines = structuredResults;
             logger.info(`Retrieved ${guidelines.length} structured knowledge chunks`);
+
+            // WebSocket: Send action complete
+            const duration = Date.now() - startTime;
+            await this.sendActionComplete('guideline_retrieval', {
+              query: userText,
+              guidelines: structuredResults.map(g => ({
+                title: g.content.substring(0, 50),
+                content: g.content,
+                source: g.source || 'Structured Knowledge Base',
+                relevance_score: g.similarity || 0.9,
+              })),
+            }, duration);
           }
         }
       }
