@@ -75,17 +75,15 @@ export async function triageRoutes(
           },
           location: {
             type: 'object',
-            description: 'Vị trí của người dùng (tùy chọn, nhưng CẦN THIẾT để tìm bệnh viện gần nhất khi user hỏi "đi khám ở đâu" hoặc triage level là emergency/urgent). Sẽ được truyền vào MCP hospital tool nếu cần.',
+            description: 'Vị trí của người dùng (tùy chọn, nhưng CẦN THIẾT để tìm bệnh viện gần nhất khi user hỏi "đi khám ở đâu" hoặc triage level là emergency/urgent). Sẽ được truyền vào MCP hospital tool nếu cần. Format: {"lat": 10.762622, "lng": 106.660172}',
             properties: {
               lat: { 
                 type: 'number',
-                description: 'Vĩ độ (latitude)',
-                example: 10.762622
+                description: 'Vĩ độ (latitude), ví dụ: 10.762622'
               },
               lng: { 
                 type: 'number',
-                description: 'Kinh độ (longitude)',
-                example: 106.660172
+                description: 'Kinh độ (longitude), ví dụ: 106.660172'
               }
             }
           }
