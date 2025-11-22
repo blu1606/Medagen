@@ -422,27 +422,33 @@ Ví dụ format markdown NGẮN GỌN:
           logger.error('[REPORT] Hospital tool (MCP) execution failed');
           // Continue without hospital info
         }
-      } else if (location && this.shouldSuggestHospital(userText)) {
+      } else if (this.shouldSuggestHospital(userText)) {
         // Also suggest hospital if user explicitly requests it
-        logger.info(`[AGENT] Step 5: Finding best matching hospital (user requested)${condition ? ` for condition: ${condition}` : ''}...`);
-        logger.info('[REPORT] Hospital tool (MCP) will be executed (user explicitly requested)');
-        try {
-          const bestHospital = await this.mapsService.findBestMatchingHospital(
-            location,
-            condition,
-            'bệnh viện'
-          );
-          if (bestHospital) {
-            logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
-            logger.info(`[REPORT] ✓ Hospital tool (MCP) executed successfully: ${bestHospital.name}`);
-            return {
-              ...finalResult,
-              nearest_clinic: bestHospital
-            };
+        if (location) {
+          logger.info(`[AGENT] Step 5: Finding best matching hospital (user requested)${condition ? ` for condition: ${condition}` : ''}...`);
+          logger.info('[REPORT] Hospital tool (MCP) will be executed (user explicitly requested)');
+          try {
+            const bestHospital = await this.mapsService.findBestMatchingHospital(
+              location,
+              condition,
+              'bệnh viện'
+            );
+            if (bestHospital) {
+              logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+              logger.info(`[REPORT] ✓ Hospital tool (MCP) executed successfully: ${bestHospital.name}`);
+              return {
+                ...finalResult,
+                nearest_clinic: bestHospital
+              };
+            }
+          } catch (error) {
+            logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+            logger.error('[REPORT] Hospital tool (MCP) execution failed');
           }
-        } catch (error) {
-          logger.error({ error }, '[AGENT] Failed to find best matching hospital');
-          logger.error('[REPORT] Hospital tool (MCP) execution failed');
+        } else {
+          logger.info('[REPORT] Hospital tool (MCP) requested by user but no location provided - will request location in response');
+          // Add a note to the response that location is needed
+          (finalResult as any).needs_location_for_hospital = true;
         }
       } else {
         if (location) {
@@ -550,24 +556,33 @@ Ví dụ format markdown NGẮN GỌN:
           logger.error({ error }, '[AGENT] Failed to find best matching hospital');
           // Continue without hospital info
         }
-      } else if (location && this.shouldSuggestHospital(userText)) {
+      } else if (this.shouldSuggestHospital(userText)) {
         // Also suggest hospital if user explicitly requests it
-        logger.info(`[AGENT] Step 4: Finding best matching hospital (user requested)${condition ? ` for condition: ${condition}` : ''}...`);
-        try {
-          const bestHospital = await this.mapsService.findBestMatchingHospital(
-            location,
-            condition,
-            'bệnh viện'
-          );
-          if (bestHospital) {
-            logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
-            return {
-              ...finalResult,
-              nearest_clinic: bestHospital
-            };
+        if (location) {
+          logger.info(`[AGENT] Step 4: Finding best matching hospital (user requested)${condition ? ` for condition: ${condition}` : ''}...`);
+          logger.info('[REPORT] Hospital tool (MCP) will be executed (user explicitly requested)');
+          try {
+            const bestHospital = await this.mapsService.findBestMatchingHospital(
+              location,
+              condition,
+              'bệnh viện'
+            );
+            if (bestHospital) {
+              logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+              logger.info(`[REPORT] ✓ Hospital tool (MCP) executed successfully: ${bestHospital.name}`);
+              return {
+                ...finalResult,
+                nearest_clinic: bestHospital
+              };
+            }
+          } catch (error) {
+            logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+            logger.error('[REPORT] Hospital tool (MCP) execution failed');
           }
-        } catch (error) {
-          logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+        } else {
+          logger.info('[REPORT] Hospital tool (MCP) requested by user but no location provided - will request location in response');
+          // Add a note to the response that location is needed
+          (finalResult as any).needs_location_for_hospital = true;
         }
       }
 
@@ -920,10 +935,17 @@ Viết bằng tiếng Việt, markdown format, ngắn gọn.`;
       'đi bệnh viện',
       'đến bệnh viện',
       'khám ở đâu',
+      'nên đi khám ở đâu',
+      'nên khám ở đâu',
+      'đi khám ở đâu',
       'đi khám',
       'cần đi khám',
       'gợi ý bệnh viện',
-      'tìm bệnh viện'
+      'tìm bệnh viện',
+      'tìm nơi khám',
+      'nơi khám',
+      'địa chỉ khám',
+      'chỗ khám'
     ];
     
     return hospitalKeywords.some(keyword => lowerText.includes(keyword));
