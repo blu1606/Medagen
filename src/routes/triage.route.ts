@@ -260,18 +260,27 @@ export async function triageRoutes(
         // Continue even if saving fails
       }
 
-      // Track tool executions (non-blocking)
+      // Track tool executions for Report Generation (non-blocking)
       try {
+        logger.info('[REPORT] Starting tool execution tracking for report generation...');
+        
         // Track CV execution if applicable
-        await ToolTrackingHelper.trackCVExecution(
-          toolTracker,
-          activeSessionId,
-          userMessage.id,
-          triageResult,
-          Math.floor(totalExecutionTime * 0.3) // Estimate 30% of time for CV
-        );
+        if (triageResult.cv_findings.model_used !== 'none') {
+          logger.info('[REPORT] Tracking CV tool execution...');
+          await ToolTrackingHelper.trackCVExecution(
+            toolTracker,
+            activeSessionId,
+            userMessage.id,
+            triageResult,
+            Math.floor(totalExecutionTime * 0.3) // Estimate 30% of time for CV
+          );
+          logger.info(`[REPORT] ✓ CV tool tracked: ${triageResult.cv_findings.model_used}`);
+        } else {
+          logger.info('[REPORT] CV tool not executed (no image or model_used=none)');
+        }
 
         // Track Triage Rules execution
+        logger.info('[REPORT] Tracking Triage Rules execution...');
         await ToolTrackingHelper.trackTriageRulesExecution(
           toolTracker,
           activeSessionId,
@@ -280,9 +289,11 @@ export async function triageRoutes(
           normalizedText || 'Image analysis',
           Math.floor(totalExecutionTime * 0.2) // Estimate 20% of time
         );
+        logger.info(`[REPORT] ✓ Triage Rules tracked: level=${triageResult.triage_level}`);
 
-        // Track RAG execution (estimate guidelines count from triage result)
-        const guidelinesCount = (triageResult as any).guidelines_count || 3; // Default estimate
+        // Track RAG execution - extract actual guidelines count from agent result
+        const guidelinesCount = (triageResult as any).guidelines_count || 3; // Captured from agent execution
+        logger.info('[REPORT] Tracking RAG/Guidelines execution...');
         await ToolTrackingHelper.trackRAGExecution(
           toolTracker,
           activeSessionId,
@@ -292,10 +303,12 @@ export async function triageRoutes(
           Math.floor(totalExecutionTime * 0.3), // Estimate 30% of time
           guidelinesCount
         );
+        logger.info(`[REPORT] ✓ RAG tool tracked: ${guidelinesCount} guidelines retrieved`);
 
-        // Track Maps execution if hospital was found
+        // Track Maps/Hospital execution if hospital was found
         const nearestClinic = (triageResult as any).nearest_clinic;
         if (nearestClinic) {
+          logger.info('[REPORT] Tracking Hospital/Maps tool execution...');
           const condition = triageResult.suspected_conditions?.[0]?.name;
           await ToolTrackingHelper.trackMapsExecution(
             toolTracker,
@@ -305,9 +318,18 @@ export async function triageRoutes(
             condition,
             Math.floor(totalExecutionTime * 0.2) // Estimate 20% of time
           );
+          logger.info(`[REPORT] ✓ Hospital tool tracked: ${nearestClinic.name} (${nearestClinic.distance_km}km)`);
+        } else {
+          if (location) {
+            logger.info(`[REPORT] Hospital tool not executed: triage_level=${triageResult.triage_level} (only called for emergency/urgent or explicit request)`);
+          } else {
+            logger.info('[REPORT] Hospital tool not executed: no location provided');
+          }
         }
+
+        logger.info('[REPORT] ✓ All tool executions tracked successfully for report generation');
       } catch (error) {
-        logger.error({ error }, 'Failed to track tool executions');
+        logger.error({ error }, '[REPORT] Failed to track tool executions');
         // Continue even if tracking fails
       }
 

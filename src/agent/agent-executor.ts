@@ -369,6 +369,8 @@ Ví dụ format markdown NGẮN GỌN:
       logger.info(`[AGENT] Calling MCP RAG - searchGuidelines...`);
       const guidelines = await this.ragService.searchGuidelines(guidelineInput);
       logger.info(`[AGENT] Retrieved ${guidelines.length} guideline snippets from RAG`);
+      // Store guidelines count for report generation
+      (guidelineInput as any).guidelines_count = guidelines.length;
 
       // Step 4: Use LLM to synthesize final response
       logger.info('Step 4: Synthesizing final response with LLM...');
@@ -384,6 +386,9 @@ Ví dụ format markdown NGẮN GỌN:
         guidelines,
         conversationContext
       );
+      
+      // Attach guidelines count to result for report generation
+      (finalResult as any).guidelines_count = guidelines.length;
 
       // Step 5: Find best matching hospital if emergency/urgent and location provided
       // This tool is called LAST in the agent workflow
@@ -394,6 +399,7 @@ Ví dụ format markdown NGẮN GỌN:
 
       if ((triageResult.triage === 'emergency' || triageResult.triage === 'urgent') && location) {
         logger.info(`[AGENT] Step 5: Finding best matching hospital (emergency/urgent case)${condition ? ` for condition: ${condition}` : ''}...`);
+        logger.info('[REPORT] Hospital tool (MCP) will be executed for emergency/urgent case');
         try {
           const bestHospital = await this.mapsService.findBestMatchingHospital(
             location,
@@ -402,20 +408,24 @@ Ví dụ format markdown NGẮN GỌN:
           );
           if (bestHospital) {
             logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+            logger.info(`[REPORT] ✓ Hospital tool (MCP) executed successfully: ${bestHospital.name}`);
             return {
               ...finalResult,
               nearest_clinic: bestHospital
             };
           } else {
             logger.warn('[AGENT] No hospital found nearby');
+            logger.info('[REPORT] Hospital tool (MCP) executed but no hospital found');
           }
         } catch (error) {
           logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+          logger.error('[REPORT] Hospital tool (MCP) execution failed');
           // Continue without hospital info
         }
       } else if (location && this.shouldSuggestHospital(userText)) {
         // Also suggest hospital if user explicitly requests it
         logger.info(`[AGENT] Step 5: Finding best matching hospital (user requested)${condition ? ` for condition: ${condition}` : ''}...`);
+        logger.info('[REPORT] Hospital tool (MCP) will be executed (user explicitly requested)');
         try {
           const bestHospital = await this.mapsService.findBestMatchingHospital(
             location,
@@ -424,6 +434,7 @@ Ví dụ format markdown NGẮN GỌN:
           );
           if (bestHospital) {
             logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+            logger.info(`[REPORT] ✓ Hospital tool (MCP) executed successfully: ${bestHospital.name}`);
             return {
               ...finalResult,
               nearest_clinic: bestHospital
@@ -431,6 +442,13 @@ Ví dụ format markdown NGẮN GỌN:
           }
         } catch (error) {
           logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+          logger.error('[REPORT] Hospital tool (MCP) execution failed');
+        }
+      } else {
+        if (location) {
+          logger.info(`[REPORT] Hospital tool (MCP) skipped: triage_level=${triageResult.triage} (only called for emergency/urgent or explicit request)`);
+        } else {
+          logger.info('[REPORT] Hospital tool (MCP) skipped: no location provided');
         }
       }
 
@@ -500,6 +518,9 @@ Ví dụ format markdown NGẮN GỌN:
         guidelines,
         conversationContext
       );
+      
+      // Attach guidelines count to result for report generation
+      (finalResult as any).guidelines_count = guidelines.length;
 
       // Step 4: Find best matching hospital if emergency/urgent and location provided
       // This tool is called LAST in the agent workflow

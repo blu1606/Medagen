@@ -64,7 +64,12 @@ export class ToolExecutionTrackerService {
         logger.error({ error }, 'Failed to track tool execution');
         // Don't throw - tracking failure shouldn't break the workflow
       } else {
-        logger.debug(`Tracked tool execution: ${execution.tool_name} (order: ${execution.execution_order})`);
+        logger.info(`[REPORT] ✓ Tool execution saved to database: ${execution.tool_display_name} (${execution.tool_name}, order: ${execution.execution_order}, time: ${execution.execution_time_ms}ms)`);
+        logger.debug(`[REPORT] Tool execution data: ${JSON.stringify({
+          tool: execution.tool_name,
+          input: Object.keys(execution.input_data || {}),
+          output_keys: Object.keys(execution.output_data || {})
+        })}`);
       }
     } catch (error) {
       logger.error({ error }, 'Error tracking tool execution');
