@@ -19,3 +19,7 @@ TEST_RESULTS.md
 
 # Test
 test-endpoints.sh
+
+# PDF files (not allowed on HuggingFace)
+*.pdf
+data/*.pdf
