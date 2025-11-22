@@ -167,6 +167,23 @@ Tạo response JSON (CHỈ JSON thuần, không có markdown):
   }
 }`;
 
+      // Log prompt and input data before sending to LLM
+      logger.info('='.repeat(80));
+      logger.info('[AGENT] PROMPT SENT TO LLM (Disease Info Query):');
+      logger.info(prompt);
+      logger.info('='.repeat(80));
+      logger.info('[AGENT] INPUT DATA SUMMARY (Disease Info Query):');
+      logger.info(`- User text: "${userText}"`);
+      logger.info(`- Guidelines count: ${guidelines.length}`);
+      if (guidelines.length > 0) {
+        guidelines.forEach((g, i) => {
+          const content = typeof g === 'string' ? g : (g.content || g.snippet || JSON.stringify(g));
+          logger.info(`  ${i + 1}. Preview: ${content.substring(0, 200)}...`);
+        });
+      }
+      logger.info(`- Conversation context: ${conversationContext ? 'Yes' : 'No'}`);
+      logger.info('='.repeat(80));
+
       const generations = await this.llm._generate([prompt]);
       const response = generations.generations[0][0].text;
 
@@ -451,6 +468,32 @@ Hãy tạo response JSON với format sau (CHỈ JSON thuần, không có markdo
     "warning_signs": "Dấu hiệu cảnh báo cần đi khám ngay + disclaimer (VD: 'Nếu sưng đỏ lan rộng, sốt cao, đau tăng nhanh, hãy đến khám ngay. Thông tin chỉ mang tính tham khảo.')"
   }
 }`;
+
+    // Log prompt and input data before sending to LLM
+    logger.info('='.repeat(80));
+    logger.info('[AGENT] PROMPT SENT TO LLM:');
+    logger.info(prompt);
+    logger.info('='.repeat(80));
+    logger.info('[AGENT] INPUT DATA SUMMARY:');
+    logger.info(`- User text: "${userText}"`);
+    logger.info(`- CV results count: ${cvResult.top_conditions.length}`);
+    if (cvResult.top_conditions.length > 0) {
+      cvResult.top_conditions.forEach((c: any, i: number) => {
+        logger.info(`  ${i + 1}. ${c.name}: ${(c.prob * 100).toFixed(1)}%`);
+      });
+    }
+    logger.info(`- Triage level: ${triageResult.triage}`);
+    logger.info(`- Triage reasoning: ${triageResult.reasoning || 'N/A'}`);
+    logger.info(`- Red flags: ${triageResult.red_flags?.join(', ') || 'None'}`);
+    logger.info(`- Guidelines count: ${guidelines.length}`);
+    if (guidelines.length > 0) {
+      guidelines.forEach((g, i) => {
+        const content = typeof g === 'string' ? g : (g.content || g.snippet || JSON.stringify(g));
+        logger.info(`  ${i + 1}. Preview: ${content.substring(0, 200)}...`);
+      });
+    }
+    logger.info(`- Conversation context: ${conversationContext ? 'Yes' : 'No'}`);
+    logger.info('='.repeat(80));
 
     const generations = await this.llm._generate([prompt]);
     const response = generations.generations[0][0].text;
