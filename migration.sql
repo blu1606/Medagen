@@ -220,7 +220,42 @@ AS $$
   LIMIT match_count;
 $$;
 
--- Create RLS policies (optional, for security)
+-- ===================== GRANT PERMISSIONS =====================
+-- Grant permissions BEFORE enabling RLS
+-- This ensures service_role and anon can access tables
+
+-- Grant ALL permissions to service_role (bypasses RLS)
+GRANT ALL ON TABLE guidelines TO service_role;
+GRANT ALL ON TABLE guideline_chunks TO service_role;
+GRANT ALL ON TABLE specialties TO service_role;
+GRANT ALL ON TABLE diseases TO service_role;
+GRANT ALL ON TABLE info_domains TO service_role;
+GRANT ALL ON TABLE medical_knowledge_chunks TO service_role;
+GRANT ALL ON TABLE sessions TO service_role;
+GRANT ALL ON TABLE conversation_sessions TO service_role;
+GRANT ALL ON TABLE conversation_history TO service_role;
+
+-- Grant permissions to anon role (for backend using anon key)
+GRANT SELECT, INSERT, UPDATE ON TABLE conversation_sessions TO anon;
+GRANT SELECT, INSERT, UPDATE ON TABLE conversation_history TO anon;
+GRANT SELECT, INSERT ON TABLE sessions TO anon;
+GRANT SELECT ON TABLE guidelines TO anon;
+GRANT SELECT ON TABLE guideline_chunks TO anon;
+GRANT SELECT ON TABLE specialties TO anon;
+GRANT SELECT ON TABLE diseases TO anon;
+GRANT SELECT ON TABLE info_domains TO anon;
+GRANT SELECT ON TABLE medical_knowledge_chunks TO anon;
+
+-- Grant USAGE on sequences (for auto-increment IDs)
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO service_role;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anon;
+
+-- Grant EXECUTE on functions
+GRANT EXECUTE ON FUNCTION match_guideline_chunks TO service_role, anon;
+GRANT EXECUTE ON FUNCTION match_medical_knowledge TO service_role, anon;
+
+-- ===================== ROW LEVEL SECURITY =====================
+-- Enable RLS for security (policies will control access)
 ALTER TABLE guidelines ENABLE ROW LEVEL SECURITY;
 ALTER TABLE guideline_chunks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE specialties ENABLE ROW LEVEL SECURITY;
@@ -236,89 +271,182 @@ ALTER TABLE conversation_history ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Service role can access all guidelines" ON guidelines;
 CREATE POLICY "Service role can access all guidelines"
   ON guidelines FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anonymous read guidelines" ON guidelines;
+CREATE POLICY "Allow anonymous read guidelines"
+  ON guidelines FOR SELECT
+  TO anon
+  USING (true);
 
 DROP POLICY IF EXISTS "Service role can access all guideline_chunks" ON guideline_chunks;
 CREATE POLICY "Service role can access all guideline_chunks"
   ON guideline_chunks FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anonymous read guideline_chunks" ON guideline_chunks;
+CREATE POLICY "Allow anonymous read guideline_chunks"
+  ON guideline_chunks FOR SELECT
+  TO anon
+  USING (true);
 
 DROP POLICY IF EXISTS "Service role can access all sessions" ON sessions;
 CREATE POLICY "Service role can access all sessions"
   ON sessions FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anonymous insert sessions" ON sessions;
+CREATE POLICY "Allow anonymous insert sessions"
+  ON sessions FOR INSERT
+  TO anon
+  WITH CHECK (true);
 
 -- Allow users to read their own sessions
 DROP POLICY IF EXISTS "Users can read their own sessions" ON sessions;
 CREATE POLICY "Users can read their own sessions"
   ON sessions FOR SELECT
+  TO authenticated
   USING (auth.uid()::text = user_id);
 
 -- Conversation sessions policies
 DROP POLICY IF EXISTS "Service role can access all conversation sessions" ON conversation_sessions;
 CREATE POLICY "Service role can access all conversation sessions"
   ON conversation_sessions FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anonymous insert for conversation sessions" ON conversation_sessions;
+CREATE POLICY "Allow anonymous insert for conversation sessions"
+  ON conversation_sessions FOR INSERT
+  TO anon
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anonymous select for conversation sessions" ON conversation_sessions;
+CREATE POLICY "Allow anonymous select for conversation sessions"
+  ON conversation_sessions FOR SELECT
+  TO anon
+  USING (true);
+
+DROP POLICY IF EXISTS "Allow anonymous update for conversation sessions" ON conversation_sessions;
+CREATE POLICY "Allow anonymous update for conversation sessions"
+  ON conversation_sessions FOR UPDATE
+  TO anon
+  USING (true)
+  WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Users can access own conversation sessions" ON conversation_sessions;
 CREATE POLICY "Users can access own conversation sessions"
   ON conversation_sessions FOR ALL
+  TO authenticated
   USING (auth.uid()::text = user_id);
 
 -- Conversation history policies
 DROP POLICY IF EXISTS "Service role can access all conversation history" ON conversation_history;
 CREATE POLICY "Service role can access all conversation history"
   ON conversation_history FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Allow anonymous access to conversation history" ON conversation_history;
+CREATE POLICY "Allow anonymous access to conversation history"
+  ON conversation_history FOR ALL
+  TO anon
+  USING (true)
+  WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Users can access own conversation history" ON conversation_history;
 CREATE POLICY "Users can access own conversation history"
   ON conversation_history FOR ALL
+  TO authenticated
   USING (auth.uid()::text = user_id);
 
 -- Specialties policies (read-only for all)
 DROP POLICY IF EXISTS "Service role can access all specialties" ON specialties;
 CREATE POLICY "Service role can access all specialties"
   ON specialties FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public read access to specialties" ON specialties;
 CREATE POLICY "Public read access to specialties"
   ON specialties FOR SELECT
+  TO anon, authenticated
   USING (true);
 
 -- Diseases policies (read-only for all)
 DROP POLICY IF EXISTS "Service role can access all diseases" ON diseases;
 CREATE POLICY "Service role can access all diseases"
   ON diseases FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public read access to diseases" ON diseases;
 CREATE POLICY "Public read access to diseases"
   ON diseases FOR SELECT
+  TO anon, authenticated
   USING (true);
 
 -- Info domains policies (read-only for all)
 DROP POLICY IF EXISTS "Service role can access all info domains" ON info_domains;
 CREATE POLICY "Service role can access all info domains"
   ON info_domains FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Public read access to info domains" ON info_domains;
 CREATE POLICY "Public read access to info domains"
   ON info_domains FOR SELECT
+  TO anon, authenticated
   USING (true);
 
 -- Medical knowledge chunks policies (read-only for all authenticated users)
 DROP POLICY IF EXISTS "Service role can access all medical knowledge" ON medical_knowledge_chunks;
 CREATE POLICY "Service role can access all medical knowledge"
   ON medical_knowledge_chunks FOR ALL
-  USING (auth.role() = 'service_role');
+  TO service_role
+  USING (true)
+  WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Authenticated users can read medical knowledge" ON medical_knowledge_chunks;
-CREATE POLICY "Authenticated users can read medical knowledge"
+DROP POLICY IF EXISTS "Public can read medical knowledge" ON medical_knowledge_chunks;
+CREATE POLICY "Public can read medical knowledge"
   ON medical_knowledge_chunks FOR SELECT
-  USING (true); -- All authenticated users can read
+  TO anon, authenticated
+  USING (true);
+
+-- ===================== VERIFY PERMISSIONS =====================
+-- Run these queries to verify permissions after migration
+
+-- Check table permissions
+-- SELECT 
+--     grantee, 
+--     table_name, 
+--     privilege_type 
+-- FROM information_schema.role_table_grants 
+-- WHERE table_schema = 'public' 
+--   AND grantee IN ('service_role', 'anon', 'authenticated')
+--   AND table_name IN ('conversation_sessions', 'conversation_history', 'sessions')
+-- ORDER BY table_name, grantee;
+
+-- Check RLS status
+-- SELECT schemaname, tablename, rowsecurity 
+-- FROM pg_tables 
+-- WHERE tablename IN ('conversation_sessions', 'conversation_history', 'sessions');
+
+-- Check policies
+-- SELECT schemaname, tablename, policyname, permissive, roles, cmd 
+-- FROM pg_policies 
+-- WHERE tablename IN ('conversation_sessions', 'conversation_history', 'sessions');
 
 -- ===================== SEED DATA =====================
 
@@ -343,4 +471,19 @@ INSERT INTO info_domains (name, name_en, order_index, description) VALUES
   ('Tiên lượng', 'Prognosis', 8, 'Tiên lượng và diễn biến bệnh'),
   ('Phòng bệnh', 'Prevention', 9, 'Biện pháp phòng ngừa và dự phòng')
 ON CONFLICT (name) DO NOTHING;
+
+-- ===================== MIGRATION COMPLETE =====================
+-- 
+-- ✅ Tables created
+-- ✅ Indexes created
+-- ✅ Functions created
+-- ✅ Permissions granted (service_role, anon)
+-- ✅ RLS enabled with policies
+-- ✅ Seed data inserted
+--
+-- Next steps:
+-- 1. Verify permissions: Run verification queries above
+-- 2. Test backend connection
+-- 3. Run seed-guidelines.ts if needed
+--
 

@@ -82,6 +82,7 @@ npm run seed
 ### 5. Start Development Server
 
 ```bash
+kill -9 $(lsof -t -i :7860)
 npm run dev
 ```
 

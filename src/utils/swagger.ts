@@ -52,23 +52,29 @@ export const swaggerOptions: FastifySwaggerOptions = {
       schemas: {
         HealthCheckRequest: {
           type: 'object',
-          required: ['text', 'user_id'],
+          required: ['user_id'],
           properties: {
             text: {
               type: 'string',
-              description: 'Mô tả triệu chứng của người dùng',
+              description: 'Mô tả triệu chứng của người dùng (bắt buộc nếu không có image_url)',
               example: 'Mắt trái đỏ và hơi mờ 2 ngày nay'
             },
             image_url: {
               type: 'string',
               format: 'uri',
-              description: 'URL của hình ảnh (nếu có)',
+              description: 'URL của hình ảnh (bắt buộc nếu không có text)',
               example: 'https://supabase.../image.jpg'
             },
             user_id: {
               type: 'string',
               description: 'ID của người dùng',
               example: 'abc123'
+            },
+            session_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Session ID để theo dõi lịch sử hội thoại (tùy chọn, sẽ tự động tạo mới nếu không có)',
+              example: '550e8400-e29b-41d4-a716-446655440000'
             },
             location: {
               type: 'object',
@@ -86,7 +92,11 @@ export const swaggerOptions: FastifySwaggerOptions = {
                 }
               }
             }
-          }
+          },
+          oneOf: [
+            { required: ['text'] },
+            { required: ['image_url'] }
+          ]
         },
         HealthCheckResponse: {
           type: 'object',
@@ -166,6 +176,7 @@ export const swaggerOptions: FastifySwaggerOptions = {
             },
             nearest_clinic: {
               type: 'object',
+              description: 'Cơ sở y tế gần nhất (nếu có location)',
               properties: {
                 name: {
                   type: 'string',
@@ -184,6 +195,11 @@ export const swaggerOptions: FastifySwaggerOptions = {
                   description: 'Đánh giá'
                 }
               }
+            },
+            session_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'Session ID để tiếp tục cuộc hội thoại trong các request tiếp theo'
             }
           }
         },
@@ -240,6 +256,72 @@ export const swaggerOptions: FastifySwaggerOptions = {
                 type: 'object'
               },
               description: 'Chi tiết lỗi (nếu có)'
+            }
+          }
+        },
+        ConversationSession: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID của session'
+            },
+            user_id: {
+              type: 'string',
+              description: 'ID của người dùng'
+            },
+            created_at: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Thời gian tạo'
+            },
+            updated_at: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Thời gian cập nhật cuối'
+            }
+          }
+        },
+        ConversationMessage: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID của message'
+            },
+            session_id: {
+              type: 'string',
+              format: 'uuid',
+              description: 'ID của session'
+            },
+            user_id: {
+              type: 'string',
+              description: 'ID của người dùng'
+            },
+            role: {
+              type: 'string',
+              enum: ['user', 'assistant'],
+              description: 'Vai trò của message'
+            },
+            content: {
+              type: 'string',
+              description: 'Nội dung message'
+            },
+            image_url: {
+              type: 'string',
+              format: 'uri',
+              description: 'URL của hình ảnh (nếu có)'
+            },
+            triage_result: {
+              type: 'object',
+              description: 'Kết quả triage (chỉ có với assistant messages)'
+            },
+            created_at: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Thời gian tạo'
             }
           }
         }
