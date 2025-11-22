@@ -1,11 +1,9 @@
-import { SupabaseVectorStore } from '@langchain/community/vectorstores/supabase';
 import { GeminiEmbedding } from '../agent/gemini-embedding.js';
 import { SupabaseService } from './supabase.service.js';
 import { logger } from '../utils/logger.js';
 import type { GuidelineQuery } from '../types/index.js';
 
 export class RAGService {
-  private vectorStore: SupabaseVectorStore | null = null;
   private supabaseService: SupabaseService;
   private embedding: GeminiEmbedding;
 
@@ -15,44 +13,47 @@ export class RAGService {
   }
 
   async initialize(): Promise<void> {
-    try {
-      logger.info('Initializing RAG service with Supabase Vector Store...');
-      
-      this.vectorStore = new SupabaseVectorStore(this.embedding, {
-        client: this.supabaseService.getClient(),
-        tableName: 'guideline_chunks',
-        queryName: 'match_guideline_chunks'
-      });
-      
-      logger.info('RAG service initialized successfully');
-    } catch (error) {
-      logger.error('Failed to initialize RAG service:', error);
-      throw error;
-    }
+    // No initialization needed for direct RPC calls
+    logger.info('RAG service ready');
   }
 
   async searchGuidelines(query: GuidelineQuery): Promise<string[]> {
     try {
-      if (!this.vectorStore) {
-        await this.initialize();
-      }
-
-      // Build search query from symptoms and suspected conditions
+      // Build search query text
       const queryText = this.buildQueryText(query);
-      
       logger.info(`Searching guidelines for: ${queryText}`);
 
-      // Perform similarity search
-      const docs = await this.vectorStore!.similaritySearch(queryText, 5);
-      
-      // Extract text from documents
-      const guidelines = docs.map(doc => doc.pageContent);
+      // Generate embedding for query
+      const queryEmbedding = await this.embedding.embedQuery(queryText);
+
+      // Call Supabase RPC function
+      const { data: docs, error } = await this.supabaseService.getClient().rpc(
+        'match_guideline_chunks',
+        {
+          query_embedding: queryEmbedding,
+          match_threshold: 0.5, // Similarity threshold
+          match_count: 5        // Number of chunks to retrieve
+        }
+      );
+
+      if (error) {
+        logger.error({ error }, 'Error calling match_guideline_chunks RPC');
+        throw error;
+      }
+
+      if (!docs || docs.length === 0) {
+        logger.info('No relevant guideline chunks found');
+        return [];
+      }
+
+      // Extract content
+      const guidelines = docs.map((doc: any) => doc.content);
       
       logger.info(`Found ${guidelines.length} relevant guideline snippets`);
       
       return guidelines;
     } catch (error) {
-      logger.error('Error searching guidelines:', error);
+      logger.error({ error }, 'Error searching guidelines');
       return [];
     }
   }
@@ -74,7 +75,8 @@ export class RAGService {
     
     return parts.join('. ');
   }
-
+  
+  // Legacy method kept for compatibility but updated to use direct SQL
   async addGuideline(
     condition: string,
     source: string,
@@ -83,7 +85,7 @@ export class RAGService {
     try {
       logger.info(`Adding guideline for ${condition}...`);
 
-      // First, insert the guideline record
+      // 1. Insert guideline record
       const { data: guideline, error: guidelineError } = await this.supabaseService
         .getClient()
         .from('guidelines')
@@ -95,51 +97,32 @@ export class RAGService {
         .select()
         .single();
 
-      if (guidelineError) {
-        logger.error({ error: guidelineError }, 'Failed to insert guideline record');
-        throw guidelineError;
-      }
+      if (guidelineError) throw guidelineError;
+      if (!guideline) throw new Error('Failed to create guideline record');
 
-      if (!guideline || !guideline.id) {
-        throw new Error('Failed to get guideline ID after insert');
-      }
+      // 2. Embed all chunks in parallel
+      const embeddings = await Promise.all(
+        chunks.map(chunk => this.embedding.embedQuery(chunk))
+      );
 
-      logger.info(`Guideline record created with ID: ${guideline.id}`);
-
-      // Then, add chunks with embeddings
-      if (!this.vectorStore) {
-        await this.initialize();
-      }
-
-      const documents = chunks.map(chunk => ({
-        pageContent: chunk,
-        metadata: {
-          guideline_id: guideline.id,
-          condition,
-          source
-        }
+      // 3. Insert chunks with embeddings
+      const chunksData = chunks.map((chunk, index) => ({
+        guideline_id: guideline.id,
+        content: chunk,
+        embedding: embeddings[index],
+        metadata: { condition, source }
       }));
 
-      logger.info(`Adding ${documents.length} documents to vector store...`);
-      
-      await this.vectorStore!.addDocuments(documents);
+      const { error: chunksError } = await this.supabaseService
+        .getClient()
+        .from('guideline_chunks')
+        .insert(chunksData);
+
+      if (chunksError) throw chunksError;
 
       logger.info(`Successfully added ${chunks.length} chunks for ${condition}`);
     } catch (error) {
-      if (error instanceof Error) {
-        logger.error({ 
-          error: error.message, 
-          stack: error.stack,
-          condition,
-          source 
-        }, 'Error adding guideline');
-      } else {
-        logger.error({ 
-          error: JSON.stringify(error),
-          condition,
-          source 
-        }, 'Error adding guideline');
-      }
+      logger.error({ error }, 'Error adding guideline');
       throw error;
     }
   }

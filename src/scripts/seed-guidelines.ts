@@ -15,7 +15,6 @@ const SUPABASE_URL = config.supabase.url;
 const SUPABASE_SERVICE_KEY = config.supabase.serviceKey;
 const GEMINI_API_KEY = config.gemini.apiKey;
 
-const TABLE_NAME = 'medical_knowledge_chunks';
 const SPECIALTY_FOLDER = 'Da liễu'; // Can be changed: "Than-kinh", etc.
 const SPECIALTY_LABEL = slugToLabel(SPECIALTY_FOLDER);
 
@@ -199,6 +198,7 @@ async function getInfoDomainId(name: string): Promise<string | null> {
 async function seedGuidelines() {
   try {
     logger.info(`Starting medical knowledge seeding for ${SPECIALTY_LABEL}...`);
+    logger.info(`⚠️  This will seed ALL diseases in the ${SPECIALTY_FOLDER} folder.`);
     
     validateConfig();
 
@@ -228,7 +228,9 @@ async function seedGuidelines() {
     const chapterEntries = await readdir(specialtyRoot);
     let totalSeeded = 0;
     let totalSkipped = 0;
+    let totalDuplicates = 0;
 
+    // Process ALL chapters (no filtering)
     for (const chapterSlug of chapterEntries) {
       const chapterPath = join(specialtyRoot, chapterSlug);
       
@@ -242,6 +244,7 @@ async function seedGuidelines() {
       // Read disease directories
       const diseaseEntries = await readdir(chapterPath);
 
+      // Process ALL diseases in this chapter (no filtering)
       for (const diseaseSlug of diseaseEntries) {
         const diseasePath = join(chapterPath, diseaseSlug);
         
@@ -294,28 +297,103 @@ async function seedGuidelines() {
             // Generate embedding
             const embedding = await embed(contentTrimmed);
 
-            // Insert into Supabase with both structured and legacy fields
-            const { error } = await supabase.from(TABLE_NAME).insert({
-              // Structured fields (new)
-              specialty_id: specialtyId,
-              disease_id: diseaseId,
-              info_domain_id: infoDomainId,
-              // Legacy fields (for backward compatibility)
-              specialty: SPECIALTY_LABEL,
-              chapter: chapterLabel,
-              disease: diseaseLabel,
-              section_title: sectionTitle,
-              content: contentTrimmed,
-              path: relativePath,
-              embedding,
-            });
+            // Check if this chunk already exists (by path) to avoid duplicates
+            const { data: existingMedicalChunk } = await supabase
+              .from('medical_knowledge_chunks')
+              .select('id')
+              .eq('path', relativePath)
+              .single();
 
-            if (error) {
-              logger.error({ error: error.message }, `    ❌ Error inserting: ${sectionTitle}`);
-              totalSkipped++;
+            let isNewMedicalChunk = false;
+            if (existingMedicalChunk) {
+              logger.info(`    ⏭️  Skipping duplicate medical chunk: ${sectionTitle} (already exists)`);
+              totalDuplicates++;
+              // Still insert into guideline_chunks for RAG compatibility
             } else {
+              isNewMedicalChunk = true;
+              // 1. Insert into medical_knowledge_chunks (Structured Knowledge)
+              const { error: error1 } = await supabase.from('medical_knowledge_chunks').insert({
+                specialty_id: specialtyId,
+                disease_id: diseaseId,
+                info_domain_id: infoDomainId,
+                specialty: SPECIALTY_LABEL,
+                chapter: chapterLabel,
+                disease: diseaseLabel,
+                section_title: sectionTitle,
+                content: contentTrimmed,
+                path: relativePath,
+                embedding,
+              });
+
+              if (error1) {
+                logger.error({ error: error1.message }, `    ❌ Error inserting structured chunk: ${sectionTitle}`);
+                totalSkipped++;
+                continue; // Skip legacy insert if structured failed
+              }
+            }
+
+            // 2. Insert into guidelines + guideline_chunks (RAG Compatibility)
+            // Check if guideline exists for this disease + section
+            let guidelineId;
+            const { data: existingGuideline } = await supabase
+              .from('guidelines')
+              .select('id')
+              .eq('condition', diseaseLabel)
+              .eq('source', sectionTitle) // Using section title as source/context
+              .single();
+
+            if (existingGuideline) {
+              guidelineId = existingGuideline.id;
+            } else {
+              const { data: newGuideline, error: gError } = await supabase
+                .from('guidelines')
+                .insert({
+                  condition: diseaseLabel,
+                  source: sectionTitle,
+                  updated_at: new Date().toISOString()
+                })
+                .select('id')
+                .single();
+              
+              if (gError || !newGuideline) {
+                logger.warn(`    ⚠️  Failed to create guideline record: ${gError?.message}`);
+              } else {
+                guidelineId = newGuideline.id;
+              }
+            }
+
+            if (guidelineId) {
+              // Check if guideline chunk already exists to avoid duplicates
+              const { data: existingGuidelineChunk } = await supabase
+                .from('guideline_chunks')
+                .select('id')
+                .eq('guideline_id', guidelineId)
+                .eq('content', contentTrimmed)
+                .single();
+
+              if (!existingGuidelineChunk) {
+                // Insert chunk only if it doesn't exist
+                const { error: chunkError } = await supabase.from('guideline_chunks').insert({
+                  guideline_id: guidelineId,
+                  content: contentTrimmed,
+                  embedding, // Reuse same embedding
+                  metadata: {
+                    chapter: chapterLabel,
+                    specialty: SPECIALTY_LABEL
+                  }
+                });
+
+                if (chunkError) {
+                  logger.warn(`    ⚠️  Failed to insert guideline chunk: ${chunkError.message}`);
+                }
+              }
+            }
+
+            // Count as seeded only if we inserted a new medical chunk
+            if (isNewMedicalChunk) {
               totalSeeded++;
             }
+
         
       } catch (error) {
             logger.error({ error }, `    ❌ Error processing file: ${filename}`);
@@ -327,7 +405,8 @@ async function seedGuidelines() {
 
     logger.info(`\n✅ Seeding completed!`);
     logger.info(`   📊 Total seeded: ${totalSeeded}`);
-    logger.info(`   ⚠️  Total skipped: ${totalSkipped}`);
+    logger.info(`   ⏭️  Total duplicates (skipped): ${totalDuplicates}`);
+    logger.info(`   ⚠️  Total skipped (errors): ${totalSkipped}`);
     
   } catch (error) {
     if (error instanceof Error) {

@@ -211,8 +211,8 @@ AS $$
     1 - (medical_knowledge_chunks.embedding <=> query_embedding) as similarity
   FROM medical_knowledge_chunks
   WHERE 1 - (medical_knowledge_chunks.embedding <=> query_embedding) > match_threshold
-    AND (filter_specialty IS NULL OR medical_knowledge_chunks.specialty = filter_specialty)
-    AND (filter_disease IS NULL OR medical_knowledge_chunks.disease = filter_disease)
+    AND (filter_specialty IS NULL OR medical_knowledge_chunks.specialty ILIKE filter_specialty)
+    AND (filter_disease IS NULL OR medical_knowledge_chunks.disease ILIKE filter_disease)
     AND (filter_specialty_id IS NULL OR medical_knowledge_chunks.specialty_id = filter_specialty_id)
     AND (filter_disease_id IS NULL OR medical_knowledge_chunks.disease_id = filter_disease_id)
     AND (filter_info_domain_id IS NULL OR medical_knowledge_chunks.info_domain_id = filter_info_domain_id)
