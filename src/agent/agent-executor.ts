@@ -409,9 +409,12 @@ Ví dụ format markdown NGẮN GỌN:
           if (bestHospital) {
             logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
             logger.info(`[REPORT] ✓ Hospital tool (MCP) executed successfully: ${bestHospital.name}`);
+            // Append hospital info to message markdown
+            const hospitalInfo = `\n\n## 🏥 Bệnh viện gần nhất\n\n**${bestHospital.name}**\n- Khoảng cách: ${bestHospital.distance_km}km\n- Địa chỉ: ${bestHospital.address || 'Địa chỉ không có sẵn'}${bestHospital.rating ? `\n- Đánh giá: ${bestHospital.rating}/5` : ''}`;
             return {
               ...finalResult,
-              nearest_clinic: bestHospital
+              nearest_clinic: bestHospital,
+              message: (finalResult.message || '') + hospitalInfo
             };
           } else {
             logger.warn('[AGENT] No hospital found nearby');
@@ -545,12 +548,17 @@ Ví dụ format markdown NGẮN GỌN:
           );
           if (bestHospital) {
             logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+            logger.info(`[REPORT] ✓ Hospital tool (MCP) executed successfully: ${bestHospital.name}`);
+            // Append hospital info to message markdown
+            const hospitalInfo = `\n\n## 🏥 Bệnh viện gần nhất\n\n**${bestHospital.name}**\n- Khoảng cách: ${bestHospital.distance_km}km\n- Địa chỉ: ${bestHospital.address || 'Địa chỉ không có sẵn'}${bestHospital.rating ? `\n- Đánh giá: ${bestHospital.rating}/5` : ''}`;
             return {
               ...finalResult,
-              nearest_clinic: bestHospital
+              nearest_clinic: bestHospital,
+              message: (finalResult.message || '') + hospitalInfo
             };
           } else {
             logger.warn('[AGENT] No hospital found nearby');
+            logger.info('[REPORT] Hospital tool (MCP) executed but no hospital found');
           }
         } catch (error) {
           logger.error({ error }, '[AGENT] Failed to find best matching hospital');
@@ -570,9 +578,12 @@ Ví dụ format markdown NGẮN GỌN:
             if (bestHospital) {
               logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
               logger.info(`[REPORT] ✓ Hospital tool (MCP) executed successfully: ${bestHospital.name}`);
+              // Append hospital info to message markdown
+              const hospitalInfo = `\n\n## 🏥 Bệnh viện gần nhất\n\n**${bestHospital.name}**\n- Khoảng cách: ${bestHospital.distance_km}km\n- Địa chỉ: ${bestHospital.address || 'Địa chỉ không có sẵn'}${bestHospital.rating ? `\n- Đánh giá: ${bestHospital.rating}/5` : ''}`;
               return {
                 ...finalResult,
-                nearest_clinic: bestHospital
+                nearest_clinic: bestHospital,
+                message: (finalResult.message || '') + hospitalInfo
               };
             }
           } catch (error) {
