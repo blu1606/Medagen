@@ -227,12 +227,13 @@ export async function triageRoutes(
       // Add user message to history
       await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
 
-      // Process triage with agent (pass conversation context)
+      // Process triage with agent (pass conversation context and location)
       const triageResult = await agent.processTriage(
         normalizedText || 'Da tôi bị gì thế này',
         normalizedImageUrl,
         user_id,
-        conversationContext // Pass context separately for better agent handling
+        conversationContext, // Pass context separately for better agent handling
+        location // Pass location for hospital finding
       );
 
       // Add assistant response to conversation history
@@ -264,9 +265,10 @@ export async function triageRoutes(
         // Continue even if saving fails
       }
 
-      // Find nearest clinic if location provided
-      let nearestClinic = null;
-      if (location) {
+      // Agent already finds nearest hospital if emergency/urgent or user requested
+      // Use nearest_clinic from triageResult if available, otherwise fallback to finding clinic
+      let nearestClinic = (triageResult as any).nearest_clinic;
+      if (!nearestClinic && location) {
         try {
           nearestClinic = await mapsService.findNearestClinic(location);
         } catch (error) {

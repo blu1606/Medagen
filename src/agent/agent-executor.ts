@@ -4,9 +4,10 @@ import { TriageRulesService } from '../services/triage-rules.service.js';
 import { RAGService } from '../services/rag.service.js';
 import { KnowledgeBaseService } from '../services/knowledge-base.service.js';
 import { SupabaseService } from '../services/supabase.service.js';
+import { MapsService } from '../services/maps.service.js';
 import { IntentClassifierService, type Intent } from '../services/intent-classifier.service.js';
 import { logger } from '../utils/logger.js';
-import type { TriageResult, TriageLevel, ConditionSource, ConditionConfidence } from '../types/index.js';
+import type { TriageResult, TriageLevel, ConditionSource, ConditionConfidence, Location, NearestClinic } from '../types/index.js';
 
 export class MedagenAgent {
   private llm: GeminiLLM;
@@ -14,15 +15,17 @@ export class MedagenAgent {
   private triageService: TriageRulesService;
   private ragService: RAGService;
   private knowledgeBase: KnowledgeBaseService;
+  private mapsService: MapsService;
   private intentClassifier: IntentClassifierService;
   private initialized: boolean = false;
 
-  constructor(supabaseService: SupabaseService) {
+  constructor(supabaseService: SupabaseService, mapsService?: MapsService) {
     this.llm = new GeminiLLM();
     this.cvService = new CVService();
     this.triageService = new TriageRulesService();
     this.ragService = new RAGService(supabaseService);
     this.knowledgeBase = new KnowledgeBaseService(supabaseService);
+    this.mapsService = mapsService || new MapsService();
     this.intentClassifier = new IntentClassifierService();
   }
 
@@ -47,8 +50,9 @@ export class MedagenAgent {
     userText: string,
     imageUrl?: string,
     _userId?: string,
-    conversationContext?: string
-  ): Promise<TriageResult> {
+    conversationContext?: string,
+    location?: Location
+  ): Promise<TriageResult & { nearest_clinic?: NearestClinic }> {
     if (!this.initialized) {
       await this.initialize();
     }
@@ -79,10 +83,10 @@ export class MedagenAgent {
         case 'triage':
           if (imageUrl) {
             logger.info('[ROUTING] → Full: Triage with image (CV + Triage + RAG)');
-            return await this.processTriageWithImage(userText, imageUrl, conversationContext);
+            return await this.processTriageWithImage(userText, imageUrl, conversationContext, location);
           } else {
             logger.info('[ROUTING] → Full: Triage text-only (Triage + RAG)');
-            return await this.processTriageTextOnly(userText, conversationContext);
+            return await this.processTriageTextOnly(userText, conversationContext, location);
           }
 
         default:
@@ -298,8 +302,9 @@ Ví dụ format markdown NGẮN GỌN:
   private async processTriageWithImage(
     userText: string,
     imageUrl: string,
-    conversationContext?: string
-  ): Promise<TriageResult> {
+    conversationContext?: string,
+    location?: Location
+  ): Promise<TriageResult & { nearest_clinic?: NearestClinic }> {
     try {
       logger.info('Processing triage with image using custom workflow...');
 
@@ -380,6 +385,55 @@ Ví dụ format markdown NGẮN GỌN:
         conversationContext
       );
 
+      // Step 5: Find best matching hospital if emergency/urgent and location provided
+      // This tool is called LAST in the agent workflow
+      // Extract condition from suspected_conditions or CV results
+      const condition = finalResult.suspected_conditions?.length > 0 
+        ? finalResult.suspected_conditions[0].name 
+        : (validCVResults.length > 0 ? validCVResults[0].name : undefined);
+
+      if ((triageResult.triage === 'emergency' || triageResult.triage === 'urgent') && location) {
+        logger.info(`[AGENT] Step 5: Finding best matching hospital (emergency/urgent case)${condition ? ` for condition: ${condition}` : ''}...`);
+        try {
+          const bestHospital = await this.mapsService.findBestMatchingHospital(
+            location,
+            condition,
+            'bệnh viện'
+          );
+          if (bestHospital) {
+            logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+            return {
+              ...finalResult,
+              nearest_clinic: bestHospital
+            };
+          } else {
+            logger.warn('[AGENT] No hospital found nearby');
+          }
+        } catch (error) {
+          logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+          // Continue without hospital info
+        }
+      } else if (location && this.shouldSuggestHospital(userText)) {
+        // Also suggest hospital if user explicitly requests it
+        logger.info(`[AGENT] Step 5: Finding best matching hospital (user requested)${condition ? ` for condition: ${condition}` : ''}...`);
+        try {
+          const bestHospital = await this.mapsService.findBestMatchingHospital(
+            location,
+            condition,
+            'bệnh viện'
+          );
+          if (bestHospital) {
+            logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+            return {
+              ...finalResult,
+              nearest_clinic: bestHospital
+            };
+          }
+        } catch (error) {
+          logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+        }
+      }
+
       return finalResult;
     } catch (error) {
       logger.error({ error }, 'Error in custom agent workflow');
@@ -394,8 +448,9 @@ Ví dụ format markdown NGẮN GỌN:
    */
   private async processTriageTextOnly(
     userText: string,
-    conversationContext?: string
-  ): Promise<TriageResult> {
+    conversationContext?: string,
+    location?: Location
+  ): Promise<TriageResult & { nearest_clinic?: NearestClinic }> {
     try {
       logger.info('Processing text-only query...');
 
@@ -438,13 +493,64 @@ Ví dụ format markdown NGẮN GỌN:
       const guidelines = await this.ragService.searchGuidelines(guidelineInput);
 
       // Step 3: Synthesize response
-      return await this.synthesizeFinalResponse(
+      const finalResult = await this.synthesizeFinalResponse(
         userText,
         { top_conditions: [] },
         triageResult,
         guidelines,
         conversationContext
       );
+
+      // Step 4: Find best matching hospital if emergency/urgent and location provided
+      // This tool is called LAST in the agent workflow
+      // Extract condition from suspected_conditions
+      const condition = finalResult.suspected_conditions?.length > 0 
+        ? finalResult.suspected_conditions[0].name 
+        : undefined;
+
+      if ((triageResult.triage === 'emergency' || triageResult.triage === 'urgent') && location) {
+        logger.info(`[AGENT] Step 4: Finding best matching hospital (emergency/urgent case)${condition ? ` for condition: ${condition}` : ''}...`);
+        try {
+          const bestHospital = await this.mapsService.findBestMatchingHospital(
+            location,
+            condition,
+            'bệnh viện'
+          );
+          if (bestHospital) {
+            logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+            return {
+              ...finalResult,
+              nearest_clinic: bestHospital
+            };
+          } else {
+            logger.warn('[AGENT] No hospital found nearby');
+          }
+        } catch (error) {
+          logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+          // Continue without hospital info
+        }
+      } else if (location && this.shouldSuggestHospital(userText)) {
+        // Also suggest hospital if user explicitly requests it
+        logger.info(`[AGENT] Step 4: Finding best matching hospital (user requested)${condition ? ` for condition: ${condition}` : ''}...`);
+        try {
+          const bestHospital = await this.mapsService.findBestMatchingHospital(
+            location,
+            condition,
+            'bệnh viện'
+          );
+          if (bestHospital) {
+            logger.info(`[AGENT] Found best matching hospital: ${bestHospital.name} (${bestHospital.distance_km}km away${bestHospital.specialty_score ? `, specialty match: ${bestHospital.specialty_score.toFixed(2)}` : ''})`);
+            return {
+              ...finalResult,
+              nearest_clinic: bestHospital
+            };
+          }
+        } catch (error) {
+          logger.error({ error }, '[AGENT] Failed to find best matching hospital');
+        }
+      }
+
+      return finalResult;
     } catch (error) {
       logger.error({ error }, 'Error in text-only triage');
       throw error;
@@ -779,6 +885,27 @@ Viết bằng tiếng Việt, markdown format, ngắn gọn.`;
         warning_signs: 'Nếu triệu chứng nặng hơn, đến cấp cứu ngay lập tức'
       }
     };
+  }
+
+  /**
+   * Check if user text suggests they need hospital recommendation
+   */
+  private shouldSuggestHospital(userText: string): boolean {
+    const lowerText = userText.toLowerCase();
+    const hospitalKeywords = [
+      'bệnh viện',
+      'bệnh viện gần',
+      'bệnh viện nào',
+      'đi bệnh viện',
+      'đến bệnh viện',
+      'khám ở đâu',
+      'đi khám',
+      'cần đi khám',
+      'gợi ý bệnh viện',
+      'tìm bệnh viện'
+    ];
+    
+    return hospitalKeywords.some(keyword => lowerText.includes(keyword));
   }
 }
 

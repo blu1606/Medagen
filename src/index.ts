@@ -54,7 +54,7 @@ async function startServer() {
     
     // Initialize agent
     logger.info('Initializing Medagen Agent...');
-    const agent = new MedagenAgent(supabaseService);
+    const agent = new MedagenAgent(supabaseService, mapsService);
     await agent.initialize();
 
     // Register routes
