@@ -63,7 +63,7 @@ export async function sessionsRoutes(
 
       return reply.status(200).send(session);
     } catch (error) {
-      logger.error('Get session endpoint error:', error);
+      logger.error({ error }, 'Get session endpoint error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to get session'

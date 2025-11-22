@@ -8,9 +8,12 @@ import { mapsRoutes } from './maps.route.js';
 import { sessionsRoutes } from './sessions.route.js';
 import { conversationRoutes } from './conversation.route.js';
 import { websocketRoutes } from './websocket.route.js';
+import { reportRoutes } from './report.route.js';
 import { MedagenAgent } from '../agent/agent-executor.js';
 import { SupabaseService } from '../services/supabase.service.js';
 import { MapsService } from '../services/maps.service.js';
+import { ConversationHistoryService } from '../services/conversation-history.service.js';
+import { ToolExecutionTrackerService } from '../services/tool-execution-tracker.service.js';
 
 export async function registerRoutes(
   fastify: FastifyInstance,
@@ -23,6 +26,10 @@ export async function registerRoutes(
 
   // Register WebSocket routes
   await websocketRoutes(fastify);
+
+  // Initialize services
+  const conversationService = new ConversationHistoryService(supabaseService.getClient());
+  const toolTracker = new ToolExecutionTrackerService(supabaseService.getClient());
 
   // Register triage routes
   await triageRoutes(fastify, agent, supabaseService, mapsService);
@@ -42,5 +49,8 @@ export async function registerRoutes(
   // Register sessions routes
   await sessionsRoutes(fastify, supabaseService);
   await conversationRoutes(fastify, supabaseService);
+  
+  // Register report routes
+  await reportRoutes(fastify, supabaseService, conversationService, toolTracker);
 }
 

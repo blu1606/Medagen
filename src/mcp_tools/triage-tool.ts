@@ -46,7 +46,7 @@ export function createTriageRulesTool(triageService: TriageRulesService): Dynami
 
         return JSON.stringify(result);
       } catch (error) {
-        logger.error('triage_rules tool error:', error);
+        logger.error({ error }, 'triage_rules tool error');
         return JSON.stringify({
           error: 'Failed to evaluate triage rules',
           triage: 'urgent',

@@ -1,24 +1,22 @@
-import { FastifySwaggerOptions } from '@fastify/swagger';
-import { FastifySwaggerUiOptions } from '@fastify/swagger-ui';
+import type { FastifySwaggerUiOptions } from '@fastify/swagger-ui';
 
-export const swaggerOptions: FastifySwaggerOptions = {
-  openapi: {
-    openapi: '3.1.0',
-    info: {
-      title: 'MEDAGEN Backend API',
-      description: 'AI Triage Assistant API với ReAct Agent và Gemini 2.5Flash',
-      version: '2.0.0',
-      contact: {
-        name: 'MEDAGEN Team'
-      }
-    },
-    servers: [
+export const swaggerOptions = {
+  openapi: '3.1.0',
+  info: {
+    title: 'MEDAGEN Backend API',
+    description: 'AI Triage Assistant API với ReAct Agent và Gemini 2.5Flash',
+    version: '2.0.0',
+    contact: {
+      name: 'MEDAGEN Team'
+    }
+  },
+  servers: [
       {
         url: 'http://localhost:7860',
         description: 'Development server (Port 7860)'
       }
-    ],
-    tags: [
+  ],
+  tags: [
       {
         name: 'health',
         description: 'Health check endpoints'
@@ -47,8 +45,8 @@ export const swaggerOptions: FastifySwaggerOptions = {
         name: 'conversations',
         description: 'Conversation history endpoints'
       }
-    ],
-    components: {
+  ],
+  components: {
       schemas: {
         HealthCheckRequest: {
           type: 'object',
@@ -200,6 +198,10 @@ export const swaggerOptions: FastifySwaggerOptions = {
               type: 'string',
               format: 'uuid',
               description: 'Session ID để tiếp tục cuộc hội thoại trong các request tiếp theo'
+            },
+            message: {
+              type: 'string',
+              description: 'Markdown response từ LLM (natural language, không bị giới hạn bởi JSON structure)'
             }
           }
         },
@@ -327,7 +329,6 @@ export const swaggerOptions: FastifySwaggerOptions = {
         }
       }
     }
-  }
 };
 
 export const swaggerUiOptions: FastifySwaggerUiOptions = {
@@ -339,7 +340,7 @@ export const swaggerUiOptions: FastifySwaggerUiOptions = {
     persistAuthorization: true
   },
   staticCSP: false, // Disable strict CSP to allow Swagger UI to fetch JSON
-  transformSpecification: (swaggerObject, request, reply) => {
+  transformSpecification: (swaggerObject, request) => {
     // Ensure servers URL matches current request
     if (swaggerObject.servers && swaggerObject.servers.length > 0) {
       const protocol = request.headers['x-forwarded-proto'] || (request.protocol || 'http');

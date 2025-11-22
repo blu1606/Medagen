@@ -1,15 +1,16 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { z } from 'zod';
+// import { z } from 'zod'; // Unused for now, can be used for future validation
 import { RAGService } from '../services/rag.service.js';
 import { SupabaseService } from '../services/supabase.service.js';
 import { logger } from '../utils/logger.js';
 import type { GuidelineQuery } from '../types/index.js';
 
-const guidelineQuerySchema = z.object({
-  symptoms: z.string().min(1),
-  suspected_conditions: z.array(z.string()).optional(),
-  triage_level: z.string().optional()
-});
+// Schema for guideline query validation (can be used for future validation)
+// const guidelineQuerySchema = z.object({
+//   symptoms: z.string().min(1),
+//   suspected_conditions: z.array(z.string()).optional(),
+//   triage_level: z.string().optional()
+// });
 
 export async function ragRoutes(
   fastify: FastifyInstance,
@@ -82,7 +83,7 @@ export async function ragRoutes(
         count: guidelines.length
       });
     } catch (error) {
-      logger.error('RAG search endpoint error:', error);
+      logger.error({ error }, 'RAG search endpoint error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to search guidelines'

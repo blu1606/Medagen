@@ -4,7 +4,6 @@ import { config } from '../utils/config.js';
 import { logger } from '../utils/logger.js';
 import type { CallbackManagerForLLMRun } from '@langchain/core/callbacks/manager';
 import type { LLMResult } from '@langchain/core/outputs';
-
 export class GeminiLLM extends LLM {
   private genAI: GoogleGenerativeAI;
   private modelName: string;
@@ -19,10 +18,19 @@ export class GeminiLLM extends LLM {
     return 'gemini';
   }
 
+  async _call(
+    prompt: string,
+    _options?: this['ParsedCallOptions'],
+    _runManager?: CallbackManagerForLLMRun
+  ): Promise<string> {
+    const result = await this._generate([prompt], _options, _runManager);
+    return result.generations[0][0].text;
+  }
+
   async _generate(
     prompts: string[],
-    options?: this['ParsedCallOptions'],
-    runManager?: CallbackManagerForLLMRun
+    _options?: this['ParsedCallOptions'],
+    _runManager?: CallbackManagerForLLMRun
   ): Promise<LLMResult> {
     try {
       const model = this.genAI.getGenerativeModel({ model: this.modelName });
@@ -48,8 +56,8 @@ export class GeminiLLM extends LLM {
         generations: [generations]
       };
     } catch (error) {
-      logger.error('Error calling Gemini API:', error);
-      throw new Error(`Gemini API error: ${error}`);
+      logger.error({ error }, 'Error calling Gemini API');
+      throw new Error(`Gemini API error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

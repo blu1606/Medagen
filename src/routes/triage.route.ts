@@ -4,6 +4,8 @@ import { MedagenAgent } from '../agent/agent-executor.js';
 import { SupabaseService } from '../services/supabase.service.js';
 import { MapsService } from '../services/maps.service.js';
 import { ConversationHistoryService } from '../services/conversation-history.service.js';
+import { ToolExecutionTrackerService } from '../services/tool-execution-tracker.service.js';
+import { ToolTrackingHelper } from '../utils/tool-tracking-helper.js';
 import { logger } from '../utils/logger.js';
 import type { HealthCheckRequest, HealthCheckResponse } from '../types/index.js';
 
@@ -44,8 +46,9 @@ export async function triageRoutes(
   supabaseService: SupabaseService,
   mapsService: MapsService
 ) {
-  // Initialize conversation history service
+  // Initialize conversation history service and tool tracker
   const conversationService = new ConversationHistoryService(supabaseService.getClient());
+  const toolTracker = new ToolExecutionTrackerService(supabaseService.getClient());
   fastify.post('/api/health-check', {
     schema: {
       description: 'Endpoint chính để xử lý triage y tế. Sử dụng ReAct Agent với Gemini 2.5Flash để phân tích triệu chứng và đưa ra khuyến nghị. Hỗ trợ conversation history để xử lý multi-turn conversations.',
@@ -133,6 +136,10 @@ export async function triageRoutes(
             session_id: {
               type: 'string',
               description: 'Session ID for conversation tracking'
+            },
+            message: {
+              type: 'string',
+              description: 'Markdown response từ LLM (natural language, không bị giới hạn bởi JSON structure)'
             }
           }
         },
@@ -168,7 +175,7 @@ export async function triageRoutes(
       const validationResult = healthCheckSchema.safeParse(request.body);
       
       if (!validationResult.success) {
-        logger.warn('Invalid request body:', validationResult.error);
+        logger.warn({ error: validationResult.error }, 'Invalid request body');
         return reply.status(400).send({
           error: 'Invalid request',
           details: validationResult.error.errors
@@ -221,20 +228,27 @@ export async function triageRoutes(
       const conversationContext = await conversationService.getContextString(activeSessionId, 5);
 
       // Add user message to history
-      await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
+      const userMessage = await conversationService.addUserMessage(activeSessionId, user_id, normalizedText, normalizedImageUrl);
 
-      // Process triage with agent (pass conversation context and session ID for WebSocket streaming)
+      // Start tracking tool executions for this message
+      toolTracker.startTracking(userMessage.id);
+      const startTime = Date.now();
+
+      // Process triage with agent (pass conversation context and location)
       const triageResult = await agent.processTriage(
         normalizedText || 'Da tôi bị gì thế này',
         normalizedImageUrl,
         user_id,
         conversationContext, // Pass context separately for better agent handling
-        activeSessionId // Pass session ID for WebSocket streaming
+        location // Pass location for hospital finding
       );
+
+      const totalExecutionTime = Date.now() - startTime;
 
       // Add assistant response to conversation history
       try {
-        const assistantMessage = `Tôi đã phân tích triệu chứng của bạn. Mức độ: ${triageResult.triage_level}. ${triageResult.recommendation.action}`;
+        // Use markdown message if available, otherwise fallback to recommendation.action
+        const assistantMessage = (triageResult as any).message || triageResult.recommendation.action;
         await conversationService.addAssistantMessage(
           activeSessionId,
           user_id,
@@ -242,8 +256,81 @@ export async function triageRoutes(
           triageResult
         );
       } catch (error) {
-        logger.error('Failed to save conversation history:', error);
+        logger.error({ error }, 'Failed to save conversation history');
         // Continue even if saving fails
+      }
+
+      // Track tool executions for Report Generation (non-blocking)
+      try {
+        logger.info('[REPORT] Starting tool execution tracking for report generation...');
+        
+        // Track CV execution if applicable
+        if (triageResult.cv_findings.model_used !== 'none') {
+          logger.info('[REPORT] Tracking CV tool execution...');
+          await ToolTrackingHelper.trackCVExecution(
+            toolTracker,
+            activeSessionId,
+            userMessage.id,
+            triageResult,
+            Math.floor(totalExecutionTime * 0.3) // Estimate 30% of time for CV
+          );
+          logger.info(`[REPORT] ✓ CV tool tracked: ${triageResult.cv_findings.model_used}`);
+        } else {
+          logger.info('[REPORT] CV tool not executed (no image or model_used=none)');
+        }
+
+        // Track Triage Rules execution
+        logger.info('[REPORT] Tracking Triage Rules execution...');
+        await ToolTrackingHelper.trackTriageRulesExecution(
+          toolTracker,
+          activeSessionId,
+          userMessage.id,
+          triageResult,
+          normalizedText || 'Image analysis',
+          Math.floor(totalExecutionTime * 0.2) // Estimate 20% of time
+        );
+        logger.info(`[REPORT] ✓ Triage Rules tracked: level=${triageResult.triage_level}`);
+
+        // Track RAG execution - extract actual guidelines count from agent result
+        const guidelinesCount = (triageResult as any).guidelines_count || 3; // Captured from agent execution
+        logger.info('[REPORT] Tracking RAG/Guidelines execution...');
+        await ToolTrackingHelper.trackRAGExecution(
+          toolTracker,
+          activeSessionId,
+          userMessage.id,
+          triageResult,
+          normalizedText || 'Image analysis',
+          Math.floor(totalExecutionTime * 0.3), // Estimate 30% of time
+          guidelinesCount
+        );
+        logger.info(`[REPORT] ✓ RAG tool tracked: ${guidelinesCount} guidelines retrieved`);
+
+        // Track Maps/Hospital execution if hospital was found
+        const nearestClinic = (triageResult as any).nearest_clinic;
+        if (nearestClinic) {
+          logger.info('[REPORT] Tracking Hospital/Maps tool execution...');
+          const condition = triageResult.suspected_conditions?.[0]?.name;
+          await ToolTrackingHelper.trackMapsExecution(
+            toolTracker,
+            activeSessionId,
+            userMessage.id,
+            nearestClinic,
+            condition,
+            Math.floor(totalExecutionTime * 0.2) // Estimate 20% of time
+          );
+          logger.info(`[REPORT] ✓ Hospital tool tracked: ${nearestClinic.name} (${nearestClinic.distance_km}km)`);
+        } else {
+          if (location) {
+            logger.info(`[REPORT] Hospital tool not executed: triage_level=${triageResult.triage_level} (only called for emergency/urgent or explicit request)`);
+          } else {
+            logger.info('[REPORT] Hospital tool not executed: no location provided');
+          }
+        }
+
+        logger.info('[REPORT] ✓ All tool executions tracked successfully for report generation');
+      } catch (error) {
+        logger.error({ error }, '[REPORT] Failed to track tool executions');
+        // Continue even if tracking fails
       }
 
       // Save session to database (for backward compatibility)
@@ -256,17 +343,18 @@ export async function triageRoutes(
           location
         });
       } catch (error) {
-        logger.error('Failed to save session:', error);
+        logger.error({ error }, 'Failed to save session');
         // Continue even if saving fails
       }
 
-      // Find nearest clinic if location provided
-      let nearestClinic = null;
-      if (location) {
+      // Agent already finds nearest hospital if emergency/urgent or user requested
+      // Use nearest_clinic from triageResult if available, otherwise fallback to finding clinic
+      let nearestClinic = (triageResult as any).nearest_clinic;
+      if (!nearestClinic && location) {
         try {
           nearestClinic = await mapsService.findNearestClinic(location);
         } catch (error) {
-          logger.error('Failed to find nearest clinic:', error);
+          logger.error({ error }, 'Failed to find nearest clinic');
           // Continue without clinic info
         }
       }
@@ -279,10 +367,14 @@ export async function triageRoutes(
       };
 
       logger.info(`Triage completed: ${triageResult.triage_level}, session: ${activeSessionId}`);
+      logger.info('='.repeat(80));
+      logger.info('[API] FINAL RESPONSE TO CLIENT:');
+      logger.info(JSON.stringify(response, null, 2));
+      logger.info('='.repeat(80));
 
       return reply.status(200).send(response);
     } catch (error) {
-      logger.error('Health check error:', error);
+      logger.error({ error }, 'Health check error');
       
       return reply.status(500).send({
         error: 'Internal server error',

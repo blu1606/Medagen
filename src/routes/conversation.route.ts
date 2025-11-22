@@ -95,7 +95,7 @@ export async function conversationRoutes(
         count: messages.length
       });
     } catch (error) {
-      logger.error('Get conversation history error:', error);
+      logger.error({ error }, 'Get conversation history error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to get conversation history'
@@ -192,7 +192,7 @@ export async function conversationRoutes(
         count: sessions.length
       });
     } catch (error) {
-      logger.error('Get user sessions error:', error);
+      logger.error({ error }, 'Get user sessions error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to get user sessions'
