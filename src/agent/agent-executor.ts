@@ -206,23 +206,35 @@ Tạo response JSON (ONLY JSON, no markdown):
       const cvResult = await this.callCVModel(imageUrl, cvType);
       
       logger.info(`CV analysis complete. Top condition: ${cvResult.top_conditions[0]?.name || 'none'}`);
+      logger.info(`CV confidence: ${cvResult.top_conditions[0]?.prob ? (cvResult.top_conditions[0].prob * 100).toFixed(1) + '%' : 'N/A'}`);
 
-      // Step 2: Call triage rules with CV results
+      // Filter CV results by confidence threshold (only use if confidence >= 0.5)
+      const CV_CONFIDENCE_THRESHOLD = 0.5;
+      const validCVResults = cvResult.top_conditions.filter((c: any) => c.prob >= CV_CONFIDENCE_THRESHOLD);
+      
+      if (validCVResults.length === 0) {
+        logger.warn(`[AGENT] CV results có confidence quá thấp (< ${CV_CONFIDENCE_THRESHOLD * 100}%). Sẽ bỏ qua CV results và chỉ dùng text-based analysis.`);
+        logger.info(`[AGENT] Top CV result: ${cvResult.top_conditions[0]?.name} (${(cvResult.top_conditions[0]?.prob * 100 || 0).toFixed(1)}%)`);
+      } else {
+        logger.info(`[AGENT] Sử dụng ${validCVResults.length} CV results với confidence >= ${CV_CONFIDENCE_THRESHOLD * 100}%`);
+      }
+
+      // Step 2: Call triage rules with CV results (only if valid)
       logger.info('Step 2: Applying triage rules...');
       const triageInput = {
         symptoms: {
           main_complaint: userText || 'Triệu chứng dựa trên hình ảnh',
           context: conversationContext
         },
-        cv_results: {
+        cv_results: validCVResults.length > 0 ? {
           model_used: cvType === 'derm' ? 'derm_cv' : cvType === 'eye' ? 'eye_cv' : 'wound_cv',
           raw_output: {
-            top_predictions: cvResult.top_conditions.map(c => ({
+            top_predictions: validCVResults.map(c => ({
               condition: c.name,
               probability: c.prob
             }))
           }
-        }
+        } : undefined
       };
 
       const triageResult = this.triageService.evaluateSymptoms(triageInput);
@@ -230,7 +242,16 @@ Tạo response JSON (ONLY JSON, no markdown):
 
       // Step 3: Get guidelines from RAG
       logger.info('[AGENT] Step 3: Retrieving medical guidelines from RAG...');
-      const suspectedConditions = cvResult.top_conditions.slice(0, 2).map(c => c.name);
+      // Chỉ dùng CV conditions nếu có valid results với confidence đủ cao
+      // Chỉ lấy 1 kết quả CV có confidence cao nhất
+      const suspectedConditions = validCVResults.length > 0 
+        ? validCVResults.slice(0, 1).map(c => c.name)
+        : [];
+      
+      if (validCVResults.length === 0) {
+        logger.info('[AGENT] Không dùng CV conditions trong RAG search vì confidence quá thấp. Chỉ dùng user symptoms.');
+      }
+      
       const guidelineInput = {
         symptoms: userText,
         suspected_conditions: suspectedConditions,
@@ -243,9 +264,14 @@ Tạo response JSON (ONLY JSON, no markdown):
 
       // Step 4: Use LLM to synthesize final response
       logger.info('Step 4: Synthesizing final response with LLM...');
+      // Chỉ truyền valid CV results
+      const filteredCVResult = {
+        top_conditions: validCVResults.length > 0 ? validCVResults : []
+      };
+      
       const finalResult = await this.synthesizeFinalResponse(
         userText,
-        cvResult,
+        filteredCVResult,
         triageResult,
         guidelines,
         conversationContext
@@ -369,6 +395,11 @@ Tạo response JSON (ONLY JSON, no markdown):
     guidelines: any[],
     conversationContext?: string
   ): Promise<TriageResult> {
+    // Determine CV model used
+    const cvModelUsed = cvResult.top_conditions.length > 0 
+      ? (cvResult.top_conditions[0] as any).model_used || 'derm_cv'
+      : 'none';
+
     const prompt = `Bạn là trợ lý y tế AI. Dựa trên thông tin sau, hãy tạo một phản hồi có cấu trúc:
 
 User input: ${userText}
@@ -376,9 +407,11 @@ User input: ${userText}
 ${conversationContext ? `Conversation context: ${conversationContext}` : ''}
 
 ${cvResult.top_conditions.length > 0 ? `
-CV Analysis Results:
+CV Analysis Results (chỉ các kết quả có độ tin cậy cao):
 ${cvResult.top_conditions.map((c: any, i: number) => `${i + 1}. ${c.name}: ${(c.prob * 100).toFixed(1)}%`).join('\n')}
-` : ''}
+` : `
+Lưu ý: Phân tích hình ảnh không cho kết quả đủ tin cậy, sẽ dựa chủ yếu vào mô tả triệu chứng của người dùng.
+`}
 
 Triage Level: ${triageResult.triage}
 Red Flags: ${triageResult.red_flags?.join(', ') || 'Không có'}
@@ -387,20 +420,26 @@ Reasoning: ${triageResult.reasoning}
 Medical Guidelines:
 ${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
 
+QUAN TRỌNG:
+${cvResult.top_conditions.length === 0 ? '- Phân tích hình ảnh không đủ tin cậy, chỉ dựa vào mô tả triệu chứng và guidelines.' : ''}
+- Chỉ đưa suspected_conditions từ CV nếu có và có độ tin cậy cao.
+- Nếu CV results không phù hợp hoặc confidence thấp, chỉ dựa vào user symptoms và guidelines.
+- Luôn nhấn mạnh: "Thông tin chỉ mang tính tham khảo, cần bác sĩ khám để chẩn đoán chính xác"
+
 Hãy tạo response JSON với format sau (ONLY JSON, no markdown):
 {
   "triage_level": "${triageResult.triage}",
   "symptom_summary": "Tóm tắt triệu chứng của người dùng bằng tiếng Việt",
   "red_flags": ${JSON.stringify(triageResult.red_flags || [])},
   "suspected_conditions": [
-    ${cvResult.top_conditions.length > 0 ? cvResult.top_conditions.slice(0, 3).map((c: any) => 
+    ${cvResult.top_conditions.length > 0 ? cvResult.top_conditions.slice(0, 1).map((c: any) => 
       `{"name": "${c.name}", "source": "cv_model", "confidence": "${c.prob > 0.8 ? 'high' : c.prob > 0.5 ? 'medium' : 'low'}"}`
-    ).join(',\n    ') : ''}
+    ).join(',\n    ') : '[]'}
   ],
   "cv_findings": {
-    "model_used": "${cvResult.top_conditions.length > 0 ? 'derm_cv' : 'none'}",
+    "model_used": "${cvModelUsed}",
     "raw_output": ${JSON.stringify(cvResult.top_conditions.length > 0 ? {
-      top_predictions: cvResult.top_conditions.map((c: any) => ({ condition: c.name, probability: c.prob }))
+      top_predictions: cvResult.top_conditions.slice(0, 1).map((c: any) => ({ condition: c.name, probability: c.prob }))
     } : {})}
   },
   "recommendation": {

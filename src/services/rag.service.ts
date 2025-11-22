@@ -33,14 +33,14 @@ export class RAGService {
 
       // Call Supabase RPC function
       logger.info('[MCP RAG] Calling match_guideline_chunks RPC...');
-      logger.info(`[MCP RAG] RPC params: { match_threshold: 0.5, match_count: 5 }`);
+      logger.info(`[MCP RAG] RPC params: { match_threshold: 0.3, match_count: 3 }`);
       
       const { data: docs, error } = await this.supabaseService.getClient().rpc(
         'match_guideline_chunks',
         {
           query_embedding: queryEmbedding,
-          match_threshold: 0.5, // Similarity threshold
-          match_count: 5        // Number of chunks to retrieve
+          match_threshold: 0.3, // Similarity threshold
+          match_count: 3        // Number of chunks to retrieve
         }
       );
 
