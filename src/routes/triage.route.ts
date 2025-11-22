@@ -133,6 +133,10 @@ export async function triageRoutes(
             session_id: {
               type: 'string',
               description: 'Session ID for conversation tracking'
+            },
+            message: {
+              type: 'string',
+              description: 'Markdown response từ LLM (natural language, không bị giới hạn bởi JSON structure)'
             }
           }
         },

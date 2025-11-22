@@ -198,6 +198,10 @@ export const swaggerOptions = {
               type: 'string',
               format: 'uuid',
               description: 'Session ID để tiếp tục cuộc hội thoại trong các request tiếp theo'
+            },
+            message: {
+              type: 'string',
+              description: 'Markdown response từ LLM (natural language, không bị giới hạn bởi JSON structure)'
             }
           }
         },
