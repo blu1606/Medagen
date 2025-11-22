@@ -76,50 +76,6 @@ export class MedagenAgent {
   }
 
   /**
-   * Handle out-of-scope queries (AI-Agent.md Section 2)
-   */
-  private handleOutOfScope(userText: string): TriageResult {
-    return {
-      triage_level: 'routine',
-      symptom_summary: `Câu hỏi: "${userText}"`,
-      red_flags: [],
-      suspected_conditions: [],
-      cv_findings: {
-        model_used: 'none',
-        raw_output: {}
-      },
-      recommendation: {
-        action: 'Xin lỗi, câu hỏi này nằm ngoài phạm vi hỗ trợ của hệ thống. Chúng tôi chỉ cung cấp thông tin về các bệnh và triệu chứng dựa trên hướng dẫn của Bộ Y Tế.',
-        timeframe: 'Không áp dụng',
-        home_care_advice: 'Để biết thông tin về bảo hiểm y tế, chi phí, thủ tục hành chính, hoặc các phương pháp điều trị ngoài hướng dẫn BYT, vui lòng liên hệ trực tiếp với cơ sở y tế hoặc cơ quan chức năng.',
-        warning_signs: 'Hệ thống không hỗ trợ nội dung này'
-      }
-    };
-  }
-
-  /**
-   * Handle queries that need clarification (AI-Agent.md Section 5.1)
-   */
-  private handleNeedsClarification(userText: string, clarificationQuestion: string): TriageResult {
-    return {
-      triage_level: 'routine',
-      symptom_summary: `Câu hỏi chưa rõ: "${userText}"`,
-      red_flags: [],
-      suspected_conditions: [],
-      cv_findings: {
-        model_used: 'none',
-        raw_output: {}
-      },
-      recommendation: {
-        action: clarificationQuestion,
-        timeframe: 'Vui lòng cung cấp thêm thông tin',
-        home_care_advice: 'Để tôi có thể hỗ trợ tốt hơn, hãy cho tôi biết cụ thể hơn về triệu chứng hoặc bệnh bạn quan tâm.',
-        warning_signs: 'Nếu có triệu chứng nghiêm trọng, hãy đến cơ sở y tế ngay'
-      }
-    };
-  }
-
-  /**
    * Process educational query about disease
    * Agent tự quyết định khi nào cần gọi knowledge base vs RAG
    */
@@ -223,63 +179,6 @@ Tạo response JSON (ONLY JSON, no markdown):
       logger.error({ error }, 'Error processing disease info query');
       return this.getSafeDefaultResponse(userText);
     }
-  }
-
-  /**
-   * Process general health query
-   */
-  private async processGeneralHealthQuery(
-    userText: string,
-    conversationContext?: string
-  ): Promise<TriageResult> {
-      // Use RAG to find relevant information
-      logger.info('='.repeat(80));
-      logger.info('[AGENT WORKFLOW] processGeneralHealthQuery STARTED');
-      logger.info(`[AGENT] User text: "${userText}"`);
-      
-      const guidelineQuery = {
-        symptoms: userText,
-        suspected_conditions: [],
-        triage_level: 'routine'
-      };
-
-      logger.info(`[AGENT] Calling MCP RAG - searchGuidelines...`);
-      const guidelines = await this.ragService.searchGuidelines(guidelineQuery);
-      logger.info(`[AGENT] Retrieved ${guidelines.length} guidelines from RAG`);
-
-    const prompt = `Bạn là trợ lý y tế. User hỏi: ${userText}
-
-${conversationContext ? `Context: ${conversationContext}` : ''}
-
-Thông tin từ hướng dẫn:
-${guidelines.map((g, i) => `${i + 1}. ${g}`).join('\n')}
-
-Trả lời một cách hữu ích, giáo dục, an toàn. Nhấn mạnh không thay thế bác sĩ.
-
-JSON response (ONLY JSON):
-{
-  "triage_level": "routine",
-  "symptom_summary": "Câu hỏi về sức khỏe tổng quát",
-  "red_flags": [],
-  "suspected_conditions": [],
-  "cv_findings": {"model_used": "none", "raw_output": {}},
-  "recommendation": {
-    "action": "Thông tin giáo dục phù hợp",
-    "timeframe": "Không áp dụng",
-    "home_care_advice": "Lời khuyên chung về sức khỏe",
-    "warning_signs": "Nếu có triệu chứng bất thường, hãy gặp bác sĩ"
-  }
-}`;
-
-    const generations = await this.llm._generate([prompt]);
-    const response = generations.generations[0][0].text;
-
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      return JSON.parse(jsonMatch[0]) as TriageResult;
-    }
-
-    return this.getSafeDefaultResponse(userText);
   }
 
   /**
