@@ -1,24 +1,25 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { z } from 'zod';
+// import { z } from 'zod'; // Unused for now, can be used for future validation
 import { TriageRulesService } from '../services/triage-rules.service.js';
 import { logger } from '../utils/logger.js';
 import type { TriageInput } from '../types/index.js';
 
-const triageInputSchema = z.object({
-  symptoms: z.object({
-    main_complaint: z.string().min(1),
-    duration: z.string().optional(),
-    pain_severity: z.enum(['nhẹ', 'vừa', 'nặng']).optional(),
-    fever: z.boolean().optional(),
-    vision_changes: z.boolean().optional(),
-    bleeding: z.boolean().optional(),
-    breathing_difficulty: z.boolean().optional(),
-    chest_pain: z.boolean().optional(),
-    severe_headache: z.boolean().optional(),
-    confusion: z.boolean().optional()
-  }),
-  cv_results: z.any().optional()
-});
+// Schema for triage input validation (can be used for future validation)
+// const triageInputSchema = z.object({
+//   symptoms: z.object({
+//     main_complaint: z.string().min(1),
+//     duration: z.string().optional(),
+//     pain_severity: z.enum(['nhẹ', 'vừa', 'nặng']).optional(),
+//     fever: z.boolean().optional(),
+//     vision_changes: z.boolean().optional(),
+//     bleeding: z.boolean().optional(),
+//     breathing_difficulty: z.boolean().optional(),
+//     chest_pain: z.boolean().optional(),
+//     severe_headache: z.boolean().optional(),
+//     confusion: z.boolean().optional()
+//   }),
+//   cv_results: z.any().optional()
+// });
 
 export async function triageRulesRoutes(fastify: FastifyInstance) {
   const triageService = new TriageRulesService();
@@ -83,7 +84,7 @@ export async function triageRulesRoutes(fastify: FastifyInstance) {
       const result = triageService.evaluateSymptoms(request.body as TriageInput);
       return reply.status(200).send(result);
     } catch (error) {
-      logger.error('Triage rules endpoint error:', error);
+      logger.error({ error }, 'Triage rules endpoint error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to evaluate triage rules'

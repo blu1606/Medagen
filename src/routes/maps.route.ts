@@ -1,14 +1,15 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { z } from 'zod';
+// import { z } from 'zod'; // Unused for now, can be used for future validation
 import { MapsService } from '../services/maps.service.js';
 import { logger } from '../utils/logger.js';
 import type { Location } from '../types/index.js';
 
-const locationSchema = z.object({
-  lat: z.number().min(-90).max(90),
-  lng: z.number().min(-180).max(180),
-  keyword: z.string().optional()
-});
+// Schema for location validation (can be used for future validation)
+// const locationSchema = z.object({
+//   lat: z.number().min(-90).max(90),
+//   lng: z.number().min(-180).max(180),
+//   keyword: z.string().optional()
+// });
 
 export async function mapsRoutes(fastify: FastifyInstance) {
   const mapsService = new MapsService();
@@ -89,7 +90,7 @@ export async function mapsRoutes(fastify: FastifyInstance) {
 
       return reply.status(200).send(clinic);
     } catch (error) {
-      logger.error('Maps endpoint error:', error);
+      logger.error({ error }, 'Maps endpoint error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to find nearest clinic'

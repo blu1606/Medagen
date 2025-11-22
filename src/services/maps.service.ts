@@ -54,7 +54,7 @@ export class MapsService {
       logger.warn('No clinics found nearby');
       return null;
     } catch (error) {
-      logger.error('Google Maps API error:', error);
+      logger.error({ error }, 'Google Maps API error');
       return null;
     }
   }

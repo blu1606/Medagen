@@ -4,10 +4,8 @@
  */
 
 import { FastifyInstance, FastifyRequest } from 'fastify';
-import { SocketStream } from '@fastify/websocket';
 import { wsConnectionManager } from '../services/websocket.service.js';
 import { logger } from '../utils/logger.js';
-
 interface WebSocketQueryString {
   session: string;
   token?: string;
@@ -18,13 +16,13 @@ export async function websocketRoutes(fastify: FastifyInstance) {
   fastify.get(
     '/ws/chat',
     { websocket: true },
-    async (connection: SocketStream, req: FastifyRequest) => {
-      const { session, token } = req.query as WebSocketQueryString;
+    async (connection, req: FastifyRequest) => {
+      const { session } = req.query as WebSocketQueryString;
 
       // Validate session parameter
       if (!session || typeof session !== 'string') {
         logger.warn('WebSocket connection rejected: missing session parameter');
-        connection.socket.close(1008, 'Session ID required');
+        connection.close(1008, 'Session ID required');
         return;
       }
 
@@ -43,11 +41,11 @@ export async function websocketRoutes(fastify: FastifyInstance) {
       logger.info(`WebSocket connection request for session: ${session}`);
 
       // Add connection to manager
-      wsConnectionManager.addConnection(session, connection.socket);
+      wsConnectionManager.addConnection(session, connection);
 
       // Send welcome message
       try {
-        connection.socket.send(
+        connection.send(
           JSON.stringify({
             type: 'connected',
             message: 'WebSocket connected successfully',
@@ -56,17 +54,17 @@ export async function websocketRoutes(fastify: FastifyInstance) {
           })
         );
       } catch (error) {
-        logger.error('Error sending welcome message:', error);
+        logger.error({ error }, 'Error sending welcome message');
       }
 
       // Handle incoming messages (optional - mainly for keep-alive pings)
-      connection.socket.on('message', (data: Buffer) => {
+      connection.on('message', (data: Buffer) => {
         try {
           const message = JSON.parse(data.toString());
 
           // Handle ping/pong
           if (message.type === 'ping') {
-            connection.socket.send(
+            connection.send(
               JSON.stringify({
                 type: 'pong',
                 timestamp: new Date().toISOString(),
@@ -80,7 +78,7 @@ export async function websocketRoutes(fastify: FastifyInstance) {
             logger.info(`Auth message received for session ${session}`);
           }
         } catch (error) {
-          logger.error(`Error processing WebSocket message for session ${session}:`, error);
+          logger.error({ error, session }, 'Error processing WebSocket message');
         }
       });
 

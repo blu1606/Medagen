@@ -38,7 +38,7 @@ export class MedagenAgent {
       this.initialized = true;
       logger.info('Medagen Agent initialized successfully');
     } catch (error) {
-      logger.error(`Failed to initialize agent: ${error}`);
+      logger.error({ error }, 'Failed to initialize agent');
       throw error;
     }
   }
@@ -98,7 +98,7 @@ export class MedagenAgent {
           }
       }
     } catch (error) {
-      logger.error(`Error processing query: ${error}`);
+      logger.error({ error }, 'Error processing query');
       
       // Return safe default
       return this.getSafeDefaultResponse(userText);
@@ -254,7 +254,7 @@ Tạo response JSON (ONLY JSON, no markdown):
 
       throw new Error('Failed to parse LLM response');
     } catch (error) {
-      logger.error(`Error processing disease info query: ${error}`);
+      logger.error({ error }, 'Error processing disease info query');
       return this.getSafeDefaultResponse(userText);
     }
   }
@@ -286,7 +286,7 @@ Tạo response JSON (ONLY JSON, no markdown):
 ${conversationContext ? `Context: ${conversationContext}` : ''}
 
 Thông tin từ hướng dẫn:
-${guidelines.map((g, i) => `${i + 1}. ${g.content || g.snippet || g}`).join('\n')}
+${guidelines.map((g, i) => `${i + 1}. ${g}`).join('\n')}
 
 Trả lời một cách hữu ích, giáo dục, an toàn. Nhấn mạnh không thay thế bác sĩ.
 
@@ -381,7 +381,7 @@ JSON response (ONLY JSON):
 
       return finalResult;
     } catch (error) {
-      logger.error(`Error in custom agent workflow: ${error}`);
+      logger.error({ error }, 'Error in custom agent workflow');
       throw error;
     }
   }
@@ -424,7 +424,7 @@ JSON response (ONLY JSON):
         conversationContext
       );
     } catch (error) {
-      logger.error(`Error in text-only triage: ${error}`);
+      logger.error({ error }, 'Error in text-only triage');
       throw error;
     }
   }

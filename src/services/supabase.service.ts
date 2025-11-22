@@ -38,13 +38,13 @@ export class SupabaseService {
         });
 
       if (error) {
-        logger.error('Error saving session:', error);
+        logger.error({ error }, 'Error saving session');
         throw error;
       }
 
       logger.info('Session saved successfully');
     } catch (error) {
-      logger.error('Failed to save session:', error);
+      logger.error({ error }, 'Failed to save session');
       throw error;
     }
   }
@@ -58,13 +58,13 @@ export class SupabaseService {
         .single();
 
       if (error) {
-        logger.error('Error fetching session:', error);
+        logger.error({ error }, 'Error fetching session');
         throw error;
       }
 
       return data;
     } catch (error) {
-      logger.error('Failed to fetch session:', error);
+      logger.error({ error }, 'Failed to fetch session');
       throw error;
     }
   }
@@ -80,7 +80,7 @@ export class SupabaseService {
 
       return { user_id: data.user.id };
     } catch (error) {
-      logger.error('Token verification failed:', error);
+      logger.error({ error }, 'Token verification failed');
       return null;
     }
   }

@@ -63,14 +63,14 @@ export class WebSocketStreamHandler extends BaseCallbackHandler {
       await wsConnectionManager.sendToSession(this.sessionId, actionStartMsg);
       logger.debug(`Sent action_start for tool ${toolName}, session ${this.sessionId}`);
     } catch (error) {
-      logger.error('Error in onAgentAction:', error);
+      logger.error({ error }, 'Error in onAgentAction');
     }
   }
 
   /**
    * Called when tool execution completes
    */
-  async onToolEnd(output: string, runId: string, parentRunId?: string, tags?: string[]): Promise<void> {
+  async onToolEnd(output: string, _runId: string, _parentRunId?: string, _tags?: string[]): Promise<void> {
     try {
       // Try to parse tool output as JSON (most tools return JSON)
       let results: any;
@@ -81,7 +81,7 @@ export class WebSocketStreamHandler extends BaseCallbackHandler {
       }
 
       // Get tool name from tags or use fallback
-      const toolName = tags?.find(tag => tag in TOOL_DISPLAY_NAMES) || 'unknown';
+      const toolName = _tags?.find((tag: string) => tag in TOOL_DISPLAY_NAMES) || 'unknown';
 
       // Calculate duration
       const startTime = this.actionStartTimes.get(toolName);
@@ -114,16 +114,16 @@ export class WebSocketStreamHandler extends BaseCallbackHandler {
         logger.debug(`Sent observation for tool ${toolName}, session ${this.sessionId}`);
       }
     } catch (error) {
-      logger.error('Error in onToolEnd:', error);
+      logger.error({ error }, 'Error in onToolEnd');
     }
   }
 
   /**
    * Called when tool execution fails
    */
-  async onToolError(error: Error, runId: string, parentRunId?: string, tags?: string[]): Promise<void> {
+  async onToolError(error: Error, _runId: string, _parentRunId?: string, _tags?: string[]): Promise<void> {
     try {
-      const toolName = tags?.find(tag => tag in TOOL_DISPLAY_NAMES) || 'unknown';
+      const toolName = _tags?.find((tag: string) => tag in TOOL_DISPLAY_NAMES) || 'unknown';
 
       // Calculate duration
       const startTime = this.actionStartTimes.get(toolName);
@@ -142,7 +142,7 @@ export class WebSocketStreamHandler extends BaseCallbackHandler {
       await wsConnectionManager.sendToSession(this.sessionId, actionErrorMsg);
       logger.debug(`Sent action_error for tool ${toolName}, session ${this.sessionId}`);
     } catch (err) {
-      logger.error('Error in onToolError:', err);
+      logger.error({ error: err }, 'Error in onToolError');
     }
   }
 
@@ -173,7 +173,7 @@ export class WebSocketStreamHandler extends BaseCallbackHandler {
       await wsConnectionManager.sendToSession(this.sessionId, finalAnswerMsg);
       logger.debug(`Sent final_answer for session ${this.sessionId}`);
     } catch (error) {
-      logger.error('Error in onAgentFinish:', error);
+      logger.error({ error }, 'Error in onAgentFinish');
     }
   }
 
@@ -197,9 +197,9 @@ export class WebSocketStreamHandler extends BaseCallbackHandler {
   async onChainError(error: Error): Promise<void> {
     try {
       wsConnectionManager.sendError(this.sessionId, 'CHAIN_ERROR', error.message);
-      logger.error(`Chain error for session ${this.sessionId}:`, error);
+      logger.error({ error, sessionId: this.sessionId }, 'Chain error');
     } catch (err) {
-      logger.error('Error in onChainError:', err);
+      logger.error({ error: err }, 'Error in onChainError');
     }
   }
 }

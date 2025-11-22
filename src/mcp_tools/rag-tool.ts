@@ -29,7 +29,7 @@ export function createGuidelineRAGTool(ragService: RAGService): DynamicTool {
           guidelines: guidelines
         });
       } catch (error) {
-        logger.error('guideline_rag tool error:', error);
+        logger.error({ error }, 'guideline_rag tool error');
         return JSON.stringify({ 
           error: 'Failed to retrieve guidelines',
           guidelines: []

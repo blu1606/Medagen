@@ -99,7 +99,7 @@ export class CVService {
       logger.info('[MCP CV] Calling Dermatology CV model...');
       return await this.callCVAPI(imageUrl, 'dermnet', 3);
     } catch (error) {
-      logger.error('[MCP CV] Derm CV error:', error);
+      logger.error({ error }, '[MCP CV] Derm CV error');
       return { top_conditions: [] };
     }
   }
@@ -110,7 +110,7 @@ export class CVService {
       // Eye conditions are also analyzed by dermnet model
       return await this.callCVAPI(imageUrl, 'dermnet', 3);
     } catch (error) {
-      logger.error('[MCP CV] Eye CV error:', error);
+      logger.error({ error }, '[MCP CV] Eye CV error');
       return { top_conditions: [] };
     }
   }
@@ -121,7 +121,7 @@ export class CVService {
       // Wound conditions are also analyzed by dermnet model
       return await this.callCVAPI(imageUrl, 'dermnet', 3);
     } catch (error) {
-      logger.error('[MCP CV] Wound CV error:', error);
+      logger.error({ error }, '[MCP CV] Wound CV error');
       return { top_conditions: [] };
     }
   }

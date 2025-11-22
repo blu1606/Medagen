@@ -1,11 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
-import { z } from 'zod';
+// import { z } from 'zod'; // Unused for now, can be used for future validation
 import { CVService } from '../services/cv.service.js';
 import { logger } from '../utils/logger.js';
 
-const imageUrlSchema = z.object({
-  image_url: z.string().url('Image URL must be a valid URL')
-});
+// Schema for image URL validation (can be used for future validation)
+// const imageUrlSchema = z.object({
+//   image_url: z.string().url('Image URL must be a valid URL')
+// });
 
 export async function cvRoutes(fastify: FastifyInstance) {
   const cvService = new CVService();
@@ -58,7 +59,7 @@ export async function cvRoutes(fastify: FastifyInstance) {
       const result = await cvService.callDermCV(request.body.image_url);
       return reply.status(200).send(result);
     } catch (error) {
-      logger.error('Derm CV endpoint error:', error);
+      logger.error({ error }, 'Derm CV endpoint error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to analyze dermatology image'
@@ -113,7 +114,7 @@ export async function cvRoutes(fastify: FastifyInstance) {
       const result = await cvService.callEyeCV(request.body.image_url);
       return reply.status(200).send(result);
     } catch (error) {
-      logger.error('Eye CV endpoint error:', error);
+      logger.error({ error }, 'Eye CV endpoint error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to analyze eye image'
@@ -168,7 +169,7 @@ export async function cvRoutes(fastify: FastifyInstance) {
       const result = await cvService.callWoundCV(request.body.image_url);
       return reply.status(200).send(result);
     } catch (error) {
-      logger.error('Wound CV endpoint error:', error);
+      logger.error({ error }, 'Wound CV endpoint error');
       return reply.status(500).send({
         error: 'Internal server error',
         message: 'Failed to analyze wound image'
