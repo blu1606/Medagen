@@ -1,5 +1,4 @@
 import { ToolExecutionTrackerService, type ToolExecution } from '../services/tool-execution-tracker.service.js';
-import { logger } from './logger.js';
 import type { TriageResult } from '../types/index.js';
 
 /**
@@ -13,7 +12,7 @@ export class ToolTrackingHelper {
   static async trackCVExecution(
     tracker: ToolExecutionTrackerService,
     sessionId: string,
-    messageId: string,
+    _messageId: string,
     triageResult: TriageResult,
     executionTime: number
   ): Promise<void> {
@@ -56,7 +55,7 @@ export class ToolTrackingHelper {
   static async trackRAGExecution(
     tracker: ToolExecutionTrackerService,
     sessionId: string,
-    messageId: string,
+    _messageId: string,
     triageResult: TriageResult,
     userText: string,
     executionTime: number,
@@ -90,7 +89,7 @@ export class ToolTrackingHelper {
   static async trackTriageRulesExecution(
     tracker: ToolExecutionTrackerService,
     sessionId: string,
-    messageId: string,
+    _messageId: string,
     triageResult: TriageResult,
     userText: string,
     executionTime: number
@@ -121,7 +120,7 @@ export class ToolTrackingHelper {
   static async trackMapsExecution(
     tracker: ToolExecutionTrackerService,
     sessionId: string,
-    messageId: string,
+    _messageId: string,
     nearestClinic: any,
     condition: string | undefined,
     executionTime: number

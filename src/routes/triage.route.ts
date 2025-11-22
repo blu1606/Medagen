@@ -246,17 +246,15 @@ export async function triageRoutes(
       const totalExecutionTime = Date.now() - startTime;
 
       // Add assistant response to conversation history
-      let assistantMessageId: string | undefined;
       try {
         // Use markdown message if available, otherwise fallback to recommendation.action
         const assistantMessage = (triageResult as any).message || triageResult.recommendation.action;
-        const assistantMessageObj = await conversationService.addAssistantMessage(
+        await conversationService.addAssistantMessage(
           activeSessionId,
           user_id,
           assistantMessage,
           triageResult
         );
-        assistantMessageId = assistantMessageObj.id;
       } catch (error) {
         logger.error({ error }, 'Failed to save conversation history');
         // Continue even if saving fails

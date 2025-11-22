@@ -138,7 +138,7 @@ export class ReportGenerationService {
     sessionData: any,
     conversationHistory: any[],
     toolExecutions: any[],
-    reportType: string
+    _reportType: string
   ): Promise<ComprehensiveReport['report_content']> {
     // Extract summary data
     const mainConcerns: string[] = [];

@@ -1,6 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { logger } from '../utils/logger.js';
-import { v4 as uuidv4 } from 'uuid';
 
 export interface ToolExecution {
   tool_name: string;
